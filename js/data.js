@@ -110,13 +110,13 @@ function defaultState() {
         customerPhone: '0933-111-222',
         pickupSlot: '8/16 14:00-16:00',
         items: [
-          { name: '原味貝果', qty: 4, price: 45 },
-          { name: '肉桂捲', qty: 2, price: 65 }
+          { name: '原味卡士達（大 5顆/袋）', qty: 2, price: 250 },
+          { name: '蔓莓法芙娜（小 8顆/袋）', qty: 1, price: 300 }
         ],
-        total: 310,
+        total: 800,
         paymentStatus: 'pending',
         orderStatus: 'active',
-        note: '麻煩幫我切半，謝謝！'
+        note: ''
       },
       {
         id: 'ORD-20260810-0006',
@@ -126,9 +126,9 @@ function defaultState() {
         customerPhone: '0922-333-444',
         pickupSlot: '8/16 16:00-18:00',
         items: [
-          { name: '歐式裸麥麵包', qty: 2, price: 120 }
+          { name: '起司剝辣椒（大 5顆/袋）', qty: 1, price: 330 }
         ],
-        total: 240,
+        total: 330,
         paymentStatus: 'pending',
         orderStatus: 'active',
         note: ''
@@ -141,10 +141,10 @@ function defaultState() {
         customerPhone: '0955-666-777',
         pickupSlot: '8/16 14:00-16:00',
         items: [
-          { name: '原味貝果', qty: 6, price: 45 },
-          { name: '巧克力可頌', qty: 3, price: 55 }
+          { name: '原味卡士達（大 5顆/袋）', qty: 3, price: 250 },
+          { name: '經典法芙娜（可可）（小 8顆/袋）', qty: 2, price: 270 }
         ],
-        total: 435,
+        total: 1290,
         paymentStatus: 'confirmed',
         orderStatus: 'active',
         note: ''
@@ -157,9 +157,9 @@ function defaultState() {
         customerPhone: '0966-888-999',
         pickupSlot: '8/16 16:00-18:00',
         items: [
-          { name: '肉桂捲', qty: 4, price: 65 }
+          { name: '古早味芝麻（大 5顆/袋）', qty: 2, price: 250 }
         ],
-        total: 260,
+        total: 500,
         paymentStatus: 'confirmed',
         orderStatus: 'picked_up',
         note: '已提前取貨'
@@ -172,9 +172,9 @@ function defaultState() {
         customerPhone: '0977-000-111',
         pickupSlot: '8/16 14:00-16:00',
         items: [
-          { name: '巧克力可頌', qty: 2, price: 55 }
+          { name: '玫瑰核乳酪（小 8顆/袋）', qty: 1, price: 310 }
         ],
-        total: 110,
+        total: 310,
         paymentStatus: 'pending',
         orderStatus: 'cancelled',
         note: '客人要求取消'
