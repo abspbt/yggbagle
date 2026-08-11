@@ -205,7 +205,7 @@ function renderLogin() {
   const shop = Store.state.shop;
   setContent(`
     <div class="pin-screen">
-      <div class="pin-logo">🍞</div>
+      <div class="pin-logo"><img src="icons/icon-192.png" alt="${escapeHtml(shop.name)}"></div>
       <div class="pin-shop-name">${escapeHtml(shop.name)}</div>
       <div class="pin-sub">老闆後台登入</div>
       <div class="pin-dots" id="pin-dots">
@@ -337,7 +337,7 @@ function renderDashboard() {
   setContent(`
     <div class="topbar">
       <div class="brand-row" style="margin-bottom:0;">
-        <div class="brand-logo">🍞</div>
+        <div class="brand-logo"><img src="icons/icon-192.png" alt="${escapeHtml(s.shop.name)}"></div>
         <div>
           <div class="brand-name">${escapeHtml(s.shop.name)}</div>
           <div class="brand-status">
