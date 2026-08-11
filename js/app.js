@@ -1122,13 +1122,21 @@ function renderToggle() {
 
 // ================== Service Worker 更新提示 ==================
 if ('serviceWorker' in navigator) {
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    location.reload();
+  });
+
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then(reg => {
+      if (reg.waiting && navigator.serviceWorker.controller) showUpdateBanner(reg);
       reg.addEventListener('updatefound', () => {
         const newWorker = reg.installing;
         newWorker.addEventListener('statechange', () => {
           if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            showUpdateBanner(newWorker);
+            showUpdateBanner(reg);
           }
         });
       });
@@ -1136,7 +1144,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-function showUpdateBanner(newWorker) {
+function showUpdateBanner(reg) {
   if (document.querySelector('.update-banner')) return;
   const banner = el(`
     <div class="update-banner">
@@ -1145,10 +1153,9 @@ function showUpdateBanner(newWorker) {
     </div>
   `);
   banner.querySelector('button').addEventListener('click', () => {
-    newWorker.postMessage({ type: 'SKIP_WAITING' });
-    newWorker.addEventListener('statechange', () => {
-      if (newWorker.state === 'activated') location.reload();
-    });
+    // 一律用當下真正在等待的 worker，避免多次更新後按鈕綁定失效
+    reg.waiting?.postMessage({ type: 'SKIP_WAITING' });
+    banner.remove();
   });
   document.body.appendChild(banner);
 }
