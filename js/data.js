@@ -4,7 +4,7 @@
 const STORAGE_KEY = 'ykj_pwa_state_v1';
 // 假資料內容（菜單、示範訂單等）改版時要跟著往上加，
 // 讓手機裡已經存過舊假資料的裝置能自動換成新內容，不用手動清資料
-const DATA_VERSION = 3;
+const DATA_VERSION = 4;
 
 function defaultState() {
   return {
@@ -63,47 +63,47 @@ function defaultState() {
     ],
     products: [
       // 有餡系列
-      { id: 'P001', campaignId: 'C001', name: '原味卡士達（大 5顆/袋）', desc: '有餡系列', price: 250, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P002', campaignId: 'C001', name: '原味卡士達（小 8顆/袋）', desc: '有餡系列', price: 280, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P003', campaignId: 'C001', name: '古早味芝麻（大 5顆/袋）', desc: '有餡系列', price: 250, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P004', campaignId: 'C001', name: '古早味芝麻（小 8顆/袋）', desc: '有餡系列', price: 280, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P005', campaignId: 'C001', name: '蔓莓法芙娜（大 5顆/袋）', desc: '有餡系列', price: 280, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P006', campaignId: 'C001', name: '蔓莓法芙娜（小 8顆/袋）', desc: '有餡系列', price: 300, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P007', campaignId: 'C001', name: '乳酪檸檬香（大 5顆/袋）', desc: '有餡系列', price: 280, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P008', campaignId: 'C001', name: '乳酪檸檬香（小 8顆/袋）', desc: '有餡系列', price: 300, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P009', campaignId: 'C001', name: '玫瑰核乳酪（大 5顆/袋）', desc: '有餡系列', price: 300, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P010', campaignId: 'C001', name: '玫瑰核乳酪（小 8顆/袋）', desc: '有餡系列', price: 310, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P011', campaignId: 'C001', name: '野莓果乳酪（大 5顆/袋）', desc: '有餡系列', price: 300, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P012', campaignId: 'C001', name: '野莓果乳酪（小 8顆/袋）', desc: '有餡系列', price: 330, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P013', campaignId: 'C001', name: '甜蜜蘋果派（大 5顆/袋）', desc: '有餡系列', price: 300, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P014', campaignId: 'C001', name: '甜蜜蘋果派（小 8顆/袋）', desc: '有餡系列', price: 330, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P015', campaignId: 'C001', name: '草莓果乳酪（大 5顆/袋）', desc: '有餡系列', price: 300, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P016', campaignId: 'C001', name: '草莓果乳酪（小 8顆/袋）', desc: '有餡系列', price: 330, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P017', campaignId: 'C001', name: '洋蔥乳酪丁（大 5顆/袋）', desc: '有餡系列', price: 300, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P018', campaignId: 'C001', name: '洋蔥乳酪丁（小 8顆/袋）', desc: '有餡系列', price: 330, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P019', campaignId: 'C001', name: '乳酪濃起司（大 5顆/袋）', desc: '有餡系列', price: 320, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P020', campaignId: 'C001', name: '乳酪濃起司（小 8顆/袋）', desc: '有餡系列', price: 350, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P021', campaignId: 'C001', name: '起司剝辣椒（大 5顆/袋）', desc: '有餡系列', price: 330, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P022', campaignId: 'C001', name: '起司剝辣椒（小 8顆/袋）', desc: '有餡系列', price: 360, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P001', campaignId: 'C001', name: '（有餡）原味卡士達（大 5顆/袋）', desc: '有餡系列', price: 250, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P002', campaignId: 'C001', name: '（有餡）原味卡士達（小 8顆/袋）', desc: '有餡系列', price: 280, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P003', campaignId: 'C001', name: '（有餡）古早味芝麻（大 5顆/袋）', desc: '有餡系列', price: 250, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P004', campaignId: 'C001', name: '（有餡）古早味芝麻（小 8顆/袋）', desc: '有餡系列', price: 280, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P005', campaignId: 'C001', name: '（有餡）蔓莓法芙娜（大 5顆/袋）', desc: '有餡系列', price: 280, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P006', campaignId: 'C001', name: '（有餡）蔓莓法芙娜（小 8顆/袋）', desc: '有餡系列', price: 300, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P007', campaignId: 'C001', name: '（有餡）乳酪檸檬香（大 5顆/袋）', desc: '有餡系列', price: 280, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P008', campaignId: 'C001', name: '（有餡）乳酪檸檬香（小 8顆/袋）', desc: '有餡系列', price: 300, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P009', campaignId: 'C001', name: '（有餡）玫瑰核乳酪（大 5顆/袋）', desc: '有餡系列', price: 300, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P010', campaignId: 'C001', name: '（有餡）玫瑰核乳酪（小 8顆/袋）', desc: '有餡系列', price: 310, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P011', campaignId: 'C001', name: '（有餡）野莓果乳酪（大 5顆/袋）', desc: '有餡系列', price: 300, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P012', campaignId: 'C001', name: '（有餡）野莓果乳酪（小 8顆/袋）', desc: '有餡系列', price: 330, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P013', campaignId: 'C001', name: '（有餡）甜蜜蘋果派（大 5顆/袋）', desc: '有餡系列', price: 300, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P014', campaignId: 'C001', name: '（有餡）甜蜜蘋果派（小 8顆/袋）', desc: '有餡系列', price: 330, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P015', campaignId: 'C001', name: '（有餡）草莓果乳酪（大 5顆/袋）', desc: '有餡系列', price: 300, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P016', campaignId: 'C001', name: '（有餡）草莓果乳酪（小 8顆/袋）', desc: '有餡系列', price: 330, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P017', campaignId: 'C001', name: '（有餡）洋蔥乳酪丁（大 5顆/袋）', desc: '有餡系列', price: 300, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P018', campaignId: 'C001', name: '（有餡）洋蔥乳酪丁（小 8顆/袋）', desc: '有餡系列', price: 330, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P019', campaignId: 'C001', name: '（有餡）乳酪濃起司（大 5顆/袋）', desc: '有餡系列', price: 320, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P020', campaignId: 'C001', name: '（有餡）乳酪濃起司（小 8顆/袋）', desc: '有餡系列', price: 350, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P021', campaignId: 'C001', name: '（有餡）起司剝辣椒（大 5顆/袋）', desc: '有餡系列', price: 330, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P022', campaignId: 'C001', name: '（有餡）起司剝辣椒（小 8顆/袋）', desc: '有餡系列', price: 360, maxPerOrder: 5, active: true, photo: '🍪' },
       // 無餡系列
-      { id: 'P023', campaignId: 'C001', name: '原味牛奶糖（大 5顆/袋）', desc: '無餡系列', price: 200, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P024', campaignId: 'C001', name: '原味牛奶糖（小 8顆/袋）', desc: '無餡系列', price: 220, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P025', campaignId: 'C001', name: '健康芝芝麻（大 5顆/袋）', desc: '無餡系列', price: 220, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P026', campaignId: 'C001', name: '健康芝芝麻（小 8顆/袋）', desc: '無餡系列', price: 240, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P027', campaignId: 'C001', name: '抹茶成熟味（大 5顆/袋）', desc: '無餡系列', price: 220, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P028', campaignId: 'C001', name: '抹茶成熟味（小 8顆/袋）', desc: '無餡系列', price: 240, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P029', campaignId: 'C001', name: '阿薩姆紅茶（大 5顆/袋）', desc: '無餡系列', price: 220, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P030', campaignId: 'C001', name: '阿薩姆紅茶（小 8顆/袋）', desc: '無餡系列', price: 240, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P031', campaignId: 'C001', name: '岩燒乳酪絲（大 5顆/袋）', desc: '無餡系列', price: 220, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P032', campaignId: 'C001', name: '岩燒乳酪絲（小 8顆/袋）', desc: '無餡系列', price: 240, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P033', campaignId: 'C001', name: '戀愛野莓果（大 5顆/袋）', desc: '無餡系列', price: 250, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P034', campaignId: 'C001', name: '戀愛野莓果（小 8顆/袋）', desc: '無餡系列', price: 270, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P035', campaignId: 'C001', name: '經典法芙娜（可可）（大 5顆/袋）', desc: '無餡系列', price: 250, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P036', campaignId: 'C001', name: '經典法芙娜（可可）（小 8顆/袋）', desc: '無餡系列', price: 270, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P037', campaignId: 'C001', name: '草莓香果粒（大 5顆/袋）', desc: '無餡系列', price: 260, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P038', campaignId: 'C001', name: '草莓香果粒（小 8顆/袋）', desc: '無餡系列', price: 280, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P039', campaignId: 'C001', name: '伯爵紅茶香（大 5顆/袋）', desc: '無餡系列', price: 260, maxPerOrder: 5, active: true, photo: '🍪' },
-      { id: 'P040', campaignId: 'C001', name: '伯爵紅茶香（小 8顆/袋）', desc: '無餡系列', price: 280, maxPerOrder: 5, active: true, photo: '🍪' }
+      { id: 'P023', campaignId: 'C001', name: '（無餡）原味牛奶糖（大 5顆/袋）', desc: '無餡系列', price: 200, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P024', campaignId: 'C001', name: '（無餡）原味牛奶糖（小 8顆/袋）', desc: '無餡系列', price: 220, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P025', campaignId: 'C001', name: '（無餡）健康芝芝麻（大 5顆/袋）', desc: '無餡系列', price: 220, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P026', campaignId: 'C001', name: '（無餡）健康芝芝麻（小 8顆/袋）', desc: '無餡系列', price: 240, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P027', campaignId: 'C001', name: '（無餡）抹茶成熟味（大 5顆/袋）', desc: '無餡系列', price: 220, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P028', campaignId: 'C001', name: '（無餡）抹茶成熟味（小 8顆/袋）', desc: '無餡系列', price: 240, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P029', campaignId: 'C001', name: '（無餡）阿薩姆紅茶（大 5顆/袋）', desc: '無餡系列', price: 220, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P030', campaignId: 'C001', name: '（無餡）阿薩姆紅茶（小 8顆/袋）', desc: '無餡系列', price: 240, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P031', campaignId: 'C001', name: '（無餡）岩燒乳酪絲（大 5顆/袋）', desc: '無餡系列', price: 220, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P032', campaignId: 'C001', name: '（無餡）岩燒乳酪絲（小 8顆/袋）', desc: '無餡系列', price: 240, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P033', campaignId: 'C001', name: '（無餡）戀愛野莓果（大 5顆/袋）', desc: '無餡系列', price: 250, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P034', campaignId: 'C001', name: '（無餡）戀愛野莓果（小 8顆/袋）', desc: '無餡系列', price: 270, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P035', campaignId: 'C001', name: '（無餡）經典法芙娜（可可）（大 5顆/袋）', desc: '無餡系列', price: 250, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P036', campaignId: 'C001', name: '（無餡）經典法芙娜（可可）（小 8顆/袋）', desc: '無餡系列', price: 270, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P037', campaignId: 'C001', name: '（無餡）草莓香果粒（大 5顆/袋）', desc: '無餡系列', price: 260, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P038', campaignId: 'C001', name: '（無餡）草莓香果粒（小 8顆/袋）', desc: '無餡系列', price: 280, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P039', campaignId: 'C001', name: '（無餡）伯爵紅茶香（大 5顆/袋）', desc: '無餡系列', price: 260, maxPerOrder: 5, active: true, photo: '🍪' },
+      { id: 'P040', campaignId: 'C001', name: '（無餡）伯爵紅茶香（小 8顆/袋）', desc: '無餡系列', price: 280, maxPerOrder: 5, active: true, photo: '🍪' }
     ],
     orders: [
       {
@@ -114,8 +114,8 @@ function defaultState() {
         customerPhone: '0933-111-222',
         pickupSlot: '8/16 14:00-16:00',
         items: [
-          { name: '原味卡士達（大 5顆/袋）', qty: 2, price: 250 },
-          { name: '蔓莓法芙娜（小 8顆/袋）', qty: 1, price: 300 }
+          { name: '（有餡）原味卡士達（大 5顆/袋）', qty: 2, price: 250 },
+          { name: '（有餡）蔓莓法芙娜（小 8顆/袋）', qty: 1, price: 300 }
         ],
         total: 800,
         paymentStatus: 'pending',
@@ -130,7 +130,7 @@ function defaultState() {
         customerPhone: '0922-333-444',
         pickupSlot: '8/16 16:00-18:00',
         items: [
-          { name: '起司剝辣椒（大 5顆/袋）', qty: 1, price: 330 }
+          { name: '（有餡）起司剝辣椒（大 5顆/袋）', qty: 1, price: 330 }
         ],
         total: 330,
         paymentStatus: 'pending',
@@ -145,8 +145,8 @@ function defaultState() {
         customerPhone: '0955-666-777',
         pickupSlot: '8/16 14:00-16:00',
         items: [
-          { name: '原味卡士達（大 5顆/袋）', qty: 3, price: 250 },
-          { name: '經典法芙娜（可可）（小 8顆/袋）', qty: 2, price: 270 }
+          { name: '（有餡）原味卡士達（大 5顆/袋）', qty: 3, price: 250 },
+          { name: '（無餡）經典法芙娜（可可）（小 8顆/袋）', qty: 2, price: 270 }
         ],
         total: 1290,
         paymentStatus: 'confirmed',
@@ -161,7 +161,7 @@ function defaultState() {
         customerPhone: '0966-888-999',
         pickupSlot: '8/16 16:00-18:00',
         items: [
-          { name: '古早味芝麻（大 5顆/袋）', qty: 2, price: 250 }
+          { name: '（有餡）古早味芝麻（大 5顆/袋）', qty: 2, price: 250 }
         ],
         total: 500,
         paymentStatus: 'confirmed',
@@ -176,7 +176,7 @@ function defaultState() {
         customerPhone: '0977-000-111',
         pickupSlot: '8/16 14:00-16:00',
         items: [
-          { name: '玫瑰核乳酪（小 8顆/袋）', qty: 1, price: 310 }
+          { name: '（有餡）玫瑰核乳酪（小 8顆/袋）', qty: 1, price: 310 }
         ],
         total: 310,
         paymentStatus: 'pending',
