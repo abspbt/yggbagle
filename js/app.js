@@ -308,6 +308,16 @@ function renderDashboard() {
     </button>
   `).join('');
 
+  const prepProducts = (activeCampaign ? s.products.filter(p => p.campaignId === activeCampaign.id) : s.products.slice())
+    .slice()
+    .sort((a, b) => b.ordered - a.ordered);
+  const prepRows = prepProducts.map(p => `
+    <button class="prep-row card-tap" style="width:100%;" data-nav="products/${p.id}">
+      <div class="prep-name">${p.photo} ${escapeHtml(p.name)}</div>
+      <div class="prep-count">${p.ordered}</div>
+    </button>
+  `).join('');
+
   setContent(`
     <div class="topbar">
       <div class="brand-row" style="margin-bottom:0;">
@@ -353,6 +363,13 @@ function renderDashboard() {
         <div class="section-title">待處理事項</div>
         <div class="card" style="padding:4px 16px;">
           ${todoItems || `<div class="empty-state" style="padding:24px 0;"><div class="icon">✅</div>目前沒有待處理事項</div>`}
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">備料總覽（依已訂購量排序）</div>
+        <div class="card" style="padding:4px 16px;">
+          ${prepRows || `<div class="empty-state" style="padding:24px 0;"><div class="icon">🥯</div>目前檔期尚無商品</div>`}
         </div>
       </div>
 
