@@ -73,6 +73,16 @@ function getProductOrderedQty(product) {
     .reduce((sum, item) => sum + item.qty, 0);
 }
 
+// 備料總覽只算「新訂單」（還沒備料），已備料/已取貨/已取消都不算，
+// 避免跟上面代表「累計總訂購量」的 getProductOrderedQty 混在一起用
+function getProductPrepQty(product) {
+  return Store.state.orders
+    .filter(o => o.orderStatus === 'new' && o.campaignId === product.campaignId)
+    .flatMap(o => o.items)
+    .filter(item => item.name === product.name)
+    .reduce((sum, item) => sum + item.qty, 0);
+}
+
 function getCampaignOrderedQty(campaignId) {
   return Store.state.orders
     .filter(o => o.orderStatus !== 'cancelled' && o.campaignId === campaignId)
@@ -310,7 +320,7 @@ function renderDashboard() {
   const s = Store.state;
   const activeCampaign = s.campaigns.find(c => c.status === 'active');
   const todayOrders = s.orders.filter(o => o.createdAt.startsWith('2026-08-10'));
-  const pendingPayment = s.orders.filter(o => o.paymentStatus === 'pending' && o.orderStatus === 'active');
+  const pendingPayment = s.orders.filter(o => o.paymentStatus === 'pending' && o.orderStatus !== 'picked_up' && o.orderStatus !== 'cancelled');
   const orderedPct = activeCampaign ? Math.min(100, Math.round(getCampaignOrderedQty(activeCampaign.id) / activeCampaign.cap * 100)) : 0;
 
   const todoItems = pendingPayment.slice(0, 5).map(o => `
@@ -325,12 +335,13 @@ function renderDashboard() {
   `).join('');
 
   const prepProducts = (activeCampaign ? s.products.filter(p => p.campaignId === activeCampaign.id) : s.products.slice())
-    .map(p => ({ ...p, orderedQty: getProductOrderedQty(p) }))
-    .sort((a, b) => b.orderedQty - a.orderedQty);
+    .map(p => ({ ...p, prepQty: getProductPrepQty(p) }))
+    .filter(p => p.prepQty > 0)
+    .sort((a, b) => b.prepQty - a.prepQty);
   const prepRows = prepProducts.map(p => `
     <div class="prep-row">
       <div class="prep-name">${p.photo} ${escapeHtml(p.name)}</div>
-      <div class="prep-count">${p.orderedQty}</div>
+      <div class="prep-count">${p.prepQty}</div>
     </div>
   `).join('');
 
@@ -383,9 +394,9 @@ function renderDashboard() {
       </div>
 
       <div class="section">
-        <div class="section-title">備料總覽（依已訂購量排序）</div>
+        <div class="section-title">備料總覽（新訂單，依數量排序）</div>
         <div class="card" style="padding:4px 16px;">
-          ${prepRows || `<div class="empty-state" style="padding:24px 0;"><div class="icon">🥯</div>目前檔期尚無商品</div>`}
+          ${prepRows || `<div class="empty-state" style="padding:24px 0;"><div class="icon">✅</div>目前沒有新訂單待備料</div>`}
         </div>
       </div>
 
@@ -424,7 +435,7 @@ function confirmTogglePreorder() {
 
 // ================== 📦 訂單列表 ==================
 const ORDER_STATUS_LABEL = {
-  active: '進行中', picked_up: '已取貨', cancelled: '已取消'
+  new: '新訂單', prepping_done: '未取貨', picked_up: '已取貨', cancelled: '已取消'
 };
 let orderFilter = { chip: 'all', search: '' };
 
@@ -434,13 +445,15 @@ function renderOrdersList() {
     { key: 'all', label: '全部' },
     { key: 'pending', label: '待確認付款' },
     { key: 'confirmed', label: '已確認' },
+    { key: 'prepping_done', label: '未取貨' },
     { key: 'picked_up', label: '已取貨' },
     { key: 'cancelled', label: '已取消' }
   ];
 
   let list = s.orders.slice();
-  if (orderFilter.chip === 'pending') list = list.filter(o => o.paymentStatus === 'pending' && o.orderStatus === 'active');
-  else if (orderFilter.chip === 'confirmed') list = list.filter(o => o.paymentStatus === 'confirmed' && o.orderStatus === 'active');
+  if (orderFilter.chip === 'pending') list = list.filter(o => o.paymentStatus === 'pending' && o.orderStatus === 'new');
+  else if (orderFilter.chip === 'confirmed') list = list.filter(o => o.paymentStatus === 'confirmed' && o.orderStatus === 'new');
+  else if (orderFilter.chip === 'prepping_done') list = list.filter(o => o.orderStatus === 'prepping_done');
   else if (orderFilter.chip === 'picked_up') list = list.filter(o => o.orderStatus === 'picked_up');
   else if (orderFilter.chip === 'cancelled') list = list.filter(o => o.orderStatus === 'cancelled');
 
@@ -452,6 +465,7 @@ function renderOrdersList() {
   const cards = list.map(o => {
     const badge = o.orderStatus === 'cancelled' ? `<span class="badge badge-cancelled">已取消</span>`
       : o.orderStatus === 'picked_up' ? `<span class="badge badge-done">已取貨</span>`
+      : o.orderStatus === 'prepping_done' ? `<span class="badge badge-confirmed">未取貨</span>`
       : o.paymentStatus === 'pending' ? `<span class="badge badge-pending">待確認付款</span>`
       : `<span class="badge badge-confirmed">已確認</span>`;
     const itemsSummary = o.items.map(i => `${i.name} x${i.qty}`).join('、');
@@ -505,6 +519,7 @@ function renderOrderDetail(id) {
 
   const badge = o.orderStatus === 'cancelled' ? `<span class="badge badge-cancelled">已取消</span>`
     : o.orderStatus === 'picked_up' ? `<span class="badge badge-done">已取貨</span>`
+    : o.orderStatus === 'prepping_done' ? `<span class="badge badge-confirmed">未取貨</span>`
     : o.paymentStatus === 'pending' ? `<span class="badge badge-pending">待確認付款</span>`
     : `<span class="badge badge-confirmed">已確認</span>`;
 
@@ -515,9 +530,10 @@ function renderOrderDetail(id) {
     </div>
   `).join('');
 
-  const canConfirmPayment = o.paymentStatus === 'pending' && o.orderStatus === 'active';
-  const canMarkPickedUp = o.orderStatus === 'active' && o.paymentStatus === 'confirmed';
-  const canCancel = o.orderStatus === 'active';
+  const canConfirmPayment = o.paymentStatus === 'pending' && (o.orderStatus === 'new' || o.orderStatus === 'prepping_done');
+  const canMarkPrepped = o.orderStatus === 'new';
+  const canMarkPickedUp = o.orderStatus === 'prepping_done';
+  const canCancel = o.orderStatus === 'new' || o.orderStatus === 'prepping_done';
 
   setContent(`
     ${topbar({ title: '訂單詳情', back: 'orders' })}
@@ -550,6 +566,7 @@ function renderOrderDetail(id) {
 
       <div class="section" style="margin-top:20px;">
         ${canConfirmPayment ? `<button class="btn btn-primary" data-act="confirm-payment" style="margin-bottom:10px;">✅ 確認付款</button>` : ''}
+        ${canMarkPrepped ? `<button class="btn btn-outline" data-act="mark-prepped" style="margin-bottom:10px;">🥯 標記已備料</button>` : ''}
         ${canMarkPickedUp ? `<button class="btn btn-outline" data-act="mark-pickedup" style="margin-bottom:10px;">📦 標記已取貨</button>` : ''}
         ${canCancel ? `<button class="btn btn-danger" data-act="cancel-order">取消訂單</button>` : ''}
       </div>
@@ -569,6 +586,12 @@ function renderOrderDetail(id) {
         renderOrderDetail(id);
       }
     });
+  });
+  root.querySelector('[data-act="mark-prepped"]')?.addEventListener('click', () => {
+    o.orderStatus = 'prepping_done';
+    Store.save();
+    showToast('已標記為未取貨（已備料）');
+    renderOrderDetail(id);
   });
   root.querySelector('[data-act="mark-pickedup"]')?.addEventListener('click', () => {
     o.orderStatus = 'picked_up';

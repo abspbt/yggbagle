@@ -4,7 +4,7 @@
 const STORAGE_KEY = 'ykj_pwa_state_v1';
 // 假資料內容（菜單、示範訂單等）改版時要跟著往上加，
 // 讓手機裡已經存過舊假資料的裝置能自動換成新內容，不用手動清資料
-const DATA_VERSION = 2;
+const DATA_VERSION = 3;
 
 function defaultState() {
   return {
@@ -119,7 +119,7 @@ function defaultState() {
         ],
         total: 800,
         paymentStatus: 'pending',
-        orderStatus: 'active',
+        orderStatus: 'new',
         note: ''
       },
       {
@@ -134,7 +134,7 @@ function defaultState() {
         ],
         total: 330,
         paymentStatus: 'pending',
-        orderStatus: 'active',
+        orderStatus: 'new',
         note: ''
       },
       {
@@ -150,7 +150,7 @@ function defaultState() {
         ],
         total: 1290,
         paymentStatus: 'confirmed',
-        orderStatus: 'active',
+        orderStatus: 'prepping_done',
         note: ''
       },
       {
