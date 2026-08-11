@@ -32,8 +32,7 @@ function defaultState() {
           { id: 'S1', date: '2026-08-16', time: '14:00-16:00' },
           { id: 'S2', date: '2026-08-16', time: '16:00-18:00' }
         ],
-        cap: 150,
-        ordered: 98
+        cap: 150
       },
       {
         id: 'C002',
@@ -44,8 +43,7 @@ function defaultState() {
         pickupSlots: [
           { id: 'S3', date: '2026-08-23', time: '14:00-18:00' }
         ],
-        cap: 120,
-        ordered: 0
+        cap: 120
       },
       {
         id: 'C000',
@@ -56,16 +54,15 @@ function defaultState() {
         pickupSlots: [
           { id: 'S0', date: '2026-07-26', time: '14:00-18:00' }
         ],
-        cap: 100,
-        ordered: 100
+        cap: 100
       }
     ],
     products: [
-      { id: 'P001', campaignId: 'C001', name: '原味貝果', desc: '經典原味，外脆內Q', price: 45, maxPerOrder: 6, active: true, ordered: 32, photo: '🥯' },
-      { id: 'P002', campaignId: 'C001', name: '肉桂捲', desc: '肉桂糖霜手工捲', price: 65, maxPerOrder: 4, active: true, ordered: 21, photo: '🥐' },
-      { id: 'P003', campaignId: 'C001', name: '歐式裸麥麵包', desc: '低糖低油，適合搭餐', price: 120, maxPerOrder: 2, active: true, ordered: 15, photo: '🍞' },
-      { id: 'P004', campaignId: 'C001', name: '巧克力可頌', desc: '法式奶油可頌夾巧克力', price: 55, maxPerOrder: 6, active: false, ordered: 30, photo: '🥐' },
-      { id: 'P005', campaignId: 'C002', name: '南瓜起司貝果', desc: '季節限定口味', price: 55, maxPerOrder: 6, active: true, ordered: 0, photo: '🥯' }
+      { id: 'P001', campaignId: 'C001', name: '原味貝果', desc: '經典原味，外脆內Q', price: 45, maxPerOrder: 6, active: true, photo: '🥯' },
+      { id: 'P002', campaignId: 'C001', name: '肉桂捲', desc: '肉桂糖霜手工捲', price: 65, maxPerOrder: 4, active: true, photo: '🥐' },
+      { id: 'P003', campaignId: 'C001', name: '歐式裸麥麵包', desc: '低糖低油，適合搭餐', price: 120, maxPerOrder: 2, active: true, photo: '🍞' },
+      { id: 'P004', campaignId: 'C001', name: '巧克力可頌', desc: '法式奶油可頌夾巧克力', price: 55, maxPerOrder: 6, active: false, photo: '🥐' },
+      { id: 'P005', campaignId: 'C002', name: '南瓜起司貝果', desc: '季節限定口味', price: 55, maxPerOrder: 6, active: true, photo: '🥯' }
     ],
     orders: [
       {

@@ -64,6 +64,22 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// 已訂購量一律從訂單明細加總，不用寫死的欄位，避免跟訂單列表對不上
+function getProductOrderedQty(product) {
+  return Store.state.orders
+    .filter(o => o.orderStatus !== 'cancelled' && o.campaignId === product.campaignId)
+    .flatMap(o => o.items)
+    .filter(item => item.name === product.name)
+    .reduce((sum, item) => sum + item.qty, 0);
+}
+
+function getCampaignOrderedQty(campaignId) {
+  return Store.state.orders
+    .filter(o => o.orderStatus !== 'cancelled' && o.campaignId === campaignId)
+    .flatMap(o => o.items)
+    .reduce((sum, item) => sum + item.qty, 0);
+}
+
 function showToast(msg) {
   const existing = document.querySelector('.toast');
   if (existing) existing.remove();
@@ -295,7 +311,7 @@ function renderDashboard() {
   const activeCampaign = s.campaigns.find(c => c.status === 'active');
   const todayOrders = s.orders.filter(o => o.createdAt.startsWith('2026-08-10'));
   const pendingPayment = s.orders.filter(o => o.paymentStatus === 'pending' && o.orderStatus === 'active');
-  const orderedPct = activeCampaign ? Math.min(100, Math.round(activeCampaign.ordered / activeCampaign.cap * 100)) : 0;
+  const orderedPct = activeCampaign ? Math.min(100, Math.round(getCampaignOrderedQty(activeCampaign.id) / activeCampaign.cap * 100)) : 0;
 
   const todoItems = pendingPayment.slice(0, 5).map(o => `
     <button class="todo-item card-tap" style="width:100%;" data-nav="orders/${o.id}">
@@ -309,12 +325,12 @@ function renderDashboard() {
   `).join('');
 
   const prepProducts = (activeCampaign ? s.products.filter(p => p.campaignId === activeCampaign.id) : s.products.slice())
-    .slice()
-    .sort((a, b) => b.ordered - a.ordered);
+    .map(p => ({ ...p, orderedQty: getProductOrderedQty(p) }))
+    .sort((a, b) => b.orderedQty - a.orderedQty);
   const prepRows = prepProducts.map(p => `
     <div class="prep-row">
       <div class="prep-name">${p.photo} ${escapeHtml(p.name)}</div>
-      <div class="prep-count">${p.ordered}</div>
+      <div class="prep-count">${p.orderedQty}</div>
     </div>
   `).join('');
 
@@ -352,7 +368,7 @@ function renderDashboard() {
           <div class="card" style="margin-top:10px;">
             <div class="order-line" style="margin-top:0;">
               <span>${escapeHtml(activeCampaign.name)}</span>
-              <span>${activeCampaign.ordered} / ${activeCampaign.cap}</span>
+              <span>${getCampaignOrderedQty(activeCampaign.id)} / ${activeCampaign.cap}</span>
             </div>
             <div class="progress-bar"><div class="progress-bar-fill" style="width:${orderedPct}%"></div></div>
           </div>
@@ -594,7 +610,7 @@ function renderProductsList() {
           <div class="product-main">
             <div class="product-name">${escapeHtml(p.name)}</div>
             <div class="product-meta">${fmtMoney(p.price)} · 限購 ${p.maxPerOrder} 個</div>
-            <div class="product-ordered">已訂購 ${p.ordered}</div>
+            <div class="product-ordered">已訂購 ${getProductOrderedQty(p)}</div>
           </div>
         </button>
         <div class="product-side">
@@ -639,7 +655,7 @@ function renderProductsList() {
 function renderProductEdit(id) {
   const s = Store.state;
   const isNew = id === 'new';
-  const p = isNew ? { id: null, name: '', desc: '', price: '', maxPerOrder: '', campaignId: s.campaigns[0]?.id, active: true, photo: '🥖', ordered: 0 } : s.products.find(x => x.id === id);
+  const p = isNew ? { id: null, name: '', desc: '', price: '', maxPerOrder: '', campaignId: s.campaigns[0]?.id, active: true, photo: '🥖' } : s.products.find(x => x.id === id);
   if (!p) { navigate('products'); return; }
 
   setContent(`
@@ -706,7 +722,7 @@ function renderProductEdit(id) {
     };
     if (isNew) {
       const newId = 'P' + String(Date.now()).slice(-6);
-      s.products.push({ id: newId, ordered: 0, photo: '🥖', ...data });
+      s.products.push({ id: newId, photo: '🥖', ...data });
     } else {
       Object.assign(p, data);
     }
@@ -833,7 +849,8 @@ const CAMPAIGN_STATUS_BADGE = { active: 'badge-active', upcoming: 'badge-upcomin
 function renderCampaignsList() {
   const s = Store.state;
   const cards = s.campaigns.map(c => {
-    const pct = Math.min(100, Math.round((c.ordered / c.cap) * 100));
+    const ordered = getCampaignOrderedQty(c.id);
+    const pct = Math.min(100, Math.round((ordered / c.cap) * 100));
     return `
       <button class="card card-tap" data-nav="more/campaigns/${c.id}">
         <div class="order-card-top">
@@ -842,7 +859,7 @@ function renderCampaignsList() {
         </div>
         <div class="order-line"><span>預購期間</span><span>${c.start} ~ ${c.end}</span></div>
         <div class="order-line"><span>取貨日</span><span>${c.pickupSlots.map(p => p.date).join('、')}</span></div>
-        <div class="order-line"><span>已訂購量</span><span>${c.ordered} / ${c.cap}</span></div>
+        <div class="order-line"><span>已訂購量</span><span>${ordered} / ${c.cap}</span></div>
         <div class="progress-bar"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
       </button>
     `;
@@ -951,7 +968,7 @@ function renderCampaignEdit(id) {
     };
     if (isNew) {
       const newId = 'C' + String(Date.now()).slice(-6);
-      s.campaigns.push({ id: newId, ordered: 0, ...data });
+      s.campaigns.push({ id: newId, ...data });
     } else {
       Object.assign(c, data);
     }
