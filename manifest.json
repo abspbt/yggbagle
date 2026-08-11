@@ -2,8 +2,8 @@
   "name": "歪嘴雞烘焙後台",
   "short_name": "歪嘴雞後台",
   "description": "歪嘴雞烘焙預購系統｜老闆後台管理",
-  "start_url": "/index.html",
-  "scope": "/",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#FAF6F0",
@@ -11,25 +11,25 @@
   "lang": "zh-TW",
   "icons": [
     {
-      "src": "/icons/icon-192.png",
+      "src": "icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-192.png",
+      "src": "icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

@@ -5,14 +5,14 @@ const CACHE_VERSION = 'v1.0.0';
 const CACHE_NAME = 'ykj-pwa-' + CACHE_VERSION;
 
 const PRECACHE_URLS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/css/style.css',
-  '/js/data.js',
-  '/js/app.js',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png'
+  './',
+  './index.html',
+  './manifest.json',
+  './css/style.css',
+  './js/data.js',
+  './js/app.js',
+  './icons/icon-192.png',
+  './icons/icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
