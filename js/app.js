@@ -312,10 +312,10 @@ function renderDashboard() {
     .slice()
     .sort((a, b) => b.ordered - a.ordered);
   const prepRows = prepProducts.map(p => `
-    <button class="prep-row card-tap" style="width:100%;" data-nav="products/${p.id}">
+    <div class="prep-row">
       <div class="prep-name">${p.photo} ${escapeHtml(p.name)}</div>
       <div class="prep-count">${p.ordered}</div>
-    </button>
+    </div>
   `).join('');
 
   setContent(`
