@@ -2,9 +2,13 @@
 // 互動狀態存 localStorage，重新整理仍保留，方便老闆試用時感受操作邏輯
 
 const STORAGE_KEY = 'ykj_pwa_state_v1';
+// 假資料內容（菜單、示範訂單等）改版時要跟著往上加，
+// 讓手機裡已經存過舊假資料的裝置能自動換成新內容，不用手動清資料
+const DATA_VERSION = 2;
 
 function defaultState() {
   return {
+    dataVersion: DATA_VERSION,
     shop: {
       name: '歪嘴雞烘焙',
       intro: '手工窯烤麵包，每週三、六限量預購。',
@@ -188,10 +192,12 @@ const Store = {
   load() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      this.state = raw ? JSON.parse(raw) : defaultState();
+      const saved = raw ? JSON.parse(raw) : null;
+      this.state = (saved && saved.dataVersion === DATA_VERSION) ? saved : defaultState();
     } catch (e) {
       this.state = defaultState();
     }
+    this.save();
     return this.state;
   },
   save() {
