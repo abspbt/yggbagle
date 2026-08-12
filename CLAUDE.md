@@ -4,7 +4,8 @@
 
 - ✅ Phase 0：老闆 PWA 資訊架構 + Wireframe（已完成，8 頁全部定案）
 - ✅ Phase 1：假資料版 PWA（已完成，已併入 main，PR #2）
-- ⏭️ 下一步：Phase 2（Google Sheets 資料表設計）
+- ✅ Phase 2：Google Sheets 資料表設計（已完成，表已建到 Google 雲端空間）
+- ⏭️ 下一步：Phase 3（Cloudflare Worker API，讀寫這份 Google Sheets）
 
 Phase 0 各頁 Wireframe 定案內容已整理成交接摘要，見對話紀錄
 （今日 Dashboard、商品管理、訂單列表+付款確認、公告設定、
@@ -119,20 +120,30 @@ PWA 程式碼位置：[貼 GitHub repo 連結]
 
 **開始前準備**：Phase 1 交接摘要
 
-**這階段要定案的表**：
-- [ ] `Campaigns`（預購檔期）：campaign_id、campaign_name、start_date、end_date、pickup_date_options、total_quantity_cap、status
-- [ ] `Products`（商品）：product_id、campaign_id、name、description、price、max_per_order、status
-- [ ] `Orders`（訂單）：order_id、campaign_id、created_at、customer_name、customer_phone、pickup_date、pickup_slot、total、payment_status、order_status、note
-- [ ] `Order_Items`（訂單明細）：order_id、product_id、product_name_snapshot、unit_price、quantity、subtotal
-- [ ] `Settings`（店家資料/公告/預購開關等單一設定值）
+**這階段要定案的表**（實際定案內容，跟原本大綱有些出入，見下方「跟大綱不同的地方」）：
+- [x] `Campaigns`（預購檔期）：campaign_id、name、status（upcoming/active/ended）、start_date、end_date、total_quantity_cap
+- [x] `PickupSlots`（取貨時段，**新增**）：slot_id、campaign_id、date、time_range
+- [x] `Products`（商品）：product_id、campaign_id、name（含「（有餡）/（無餡）」前綴）、category、price、max_per_order、active
+- [x] `Orders`（訂單）：order_id、campaign_id、created_at、customer_name、customer_phone、pickup_slot_id、total、payment_status（pending/confirmed）、order_status（**4 段**：new/prepping_done/picked_up/cancelled）、note
+- [x] `Order_Items`（訂單明細）：order_id、product_id、product_name_snapshot、unit_price、quantity、subtotal
+- [x] `Settings`（店家資料/公告/預購開關等單一設定值，key-value 格式）
 
-**產出**：一份實際建好、有正確欄位標題列的 Google Sheets 檔案（先不用填真實資料，欄位對齊即可）。
+**跟原本大綱不同的地方**（老闆真的會用這份表查資料，所以多做了兩個唯讀查詢分頁）：
+- 新增 `PickupSlots` 表：因為 Phase 1 的「預購檔期設定」頁面已經做成一個檔期可以有多筆取貨時段，一對多關係塞不進 `Campaigns` 單一欄位
+- 新增 `訂單查詢` 分頁：老闆非技術背景，輸入訂單編號或手機號碼，公式自動抓出符合的訂單，不用操作篩選器
+- 新增 `月報表` 分頁：輸入年月，公式自動算出當月訂單數/營收、付款狀況、商品銷售排行（前 5 名）
+- 兩個查詢分頁都是公式即時讀 `Orders`/`Order_Items`，不是複製一份資料，避免又出現「兩邊對不起來」的問題（Phase 1 已經踩過這個坑）
+- 不存任何彙總/計算欄位在原始表裡（例如已訂購量），一律即時算，理由同上
+- `status` 類欄位都加了資料驗證下拉選單，避免老闆手動改資料時打錯字
 
-**驗收標準**：每張表的欄位跟 Phase 0 定案的頁面需求對得起來（例如今日 Dashboard 要顯示的數字，能從這些表算出來）。
+**產出**：一份實際建好、有正確欄位標題列的 Google Sheets 檔案（含示範資料），已匯入老闆的 Google 雲端空間。
+
+**驗收標準**：每張表的欄位跟 Phase 0 定案的頁面需求對得起來；月報表分頁的公式數字已經跟老闆核對過，正確。
 
 **▶ 交接摘要範本**：
 ```
-延續「歪嘴雞烘焙預購系統」，已完成 Phase 2：Google Sheets 資料表設計。
+延續「歪嘴雞烘焙預購系統」，已完成 Phase 2：Google Sheets 資料表設計，
+已建好 8 個分頁（6 張原始資料表 + 訂單查詢 + 月報表），已匯入 Google 雲端空間。
 表結構：[貼上最終欄位清單，或附 Sheets 連結]
 
 現在要做 Phase 3：Cloudflare Worker API，讀寫這份 Google Sheets。
