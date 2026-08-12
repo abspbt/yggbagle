@@ -12,7 +12,11 @@ const CORS_HEADERS = {
 function json(data, init = {}) {
   return Response.json(data, {
     ...init,
-    headers: { ...CORS_HEADERS, ...(init.headers || {}) },
+    headers: {
+      ...CORS_HEADERS,
+      "Content-Type": "application/json; charset=utf-8",
+      ...(init.headers || {}),
+    },
   });
 }
 
