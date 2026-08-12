@@ -6,12 +6,14 @@
 <title>歪嘴雞烘焙｜線上預購</title>
 <meta name="description" content="歪嘴雞烘焙預購系統｜手工窯烤麵包線上預購">
 <meta name="theme-color" content="#D97B3F">
+<link rel="icon" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 <div id="app">
   <div class="brand-header">
-    <div class="brand-logo">🐥</div>
+    <img class="brand-logo" src="assets/logo.jpg" alt="歪嘴雞烘焙 Logo">
     <div>
       <p id="shop-name" class="brand-name">歪嘴雞烘焙</p>
       <p id="shop-intro" class="brand-sub"></p>
@@ -160,13 +162,22 @@
           <span id="done-order-total">NT$ 0</span>
         </div>
       </div>
-      <p class="done-hint done-hint-strong">📸 請截圖保留這一頁的訂購明細，方便日後彼此對帳。</p>
+      <div class="done-card save-steps">
+        <p class="done-label">避免忘記訂了什麼，建議照著做</p>
+        <ol class="save-steps-list">
+          <li><span class="save-step-num">1</span><span>截圖：先把這個畫面截圖起來，方便自己知道買了什麼</span></li>
+          <li><span class="save-step-num">2</span><span>分享／儲存購買明細：點下面按鈕，把明細存起來或分享出去</span></li>
+          <li><span class="save-step-num">3</span><span>傳送給老闆：打開 LINE，把明細傳給我們，方便之後核對</span></li>
+        </ol>
+        <button id="save-share-btn" type="button" class="btn btn-secondary">📤 分享／儲存購買明細</button>
+        <p id="save-share-status" class="done-meta hidden"></p>
+      </div>
+      <a id="done-line-link" class="btn btn-primary" href="#" target="_blank" rel="noopener">開啟 LINE 傳送給老闆</a>
       <div class="done-card">
         <p class="done-label">請匯款至</p>
         <div id="done-bank-info" class="bank-info"></div>
       </div>
-      <p class="done-hint">請完成匯款後，將匯款截圖傳到 LINE 讓我們確認，謝謝您的預購！</p>
-      <a id="done-line-link" class="btn btn-primary" href="#" target="_blank" rel="noopener">前往 LINE 傳送截圖</a>
+      <p class="done-hint">完成匯款後，麻煩把匯款截圖也傳到剛剛那個 LINE 對話讓我們確認，謝謝您的預購！</p>
       <button id="restart-btn" class="btn btn-secondary">再訂購一筆</button>
     </section>
   </main>

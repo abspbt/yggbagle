@@ -52,6 +52,8 @@
     doneFulfillment: document.getElementById("done-fulfillment"),
     doneOrderItems: document.getElementById("done-order-items"),
     doneOrderTotal: document.getElementById("done-order-total"),
+    saveShareBtn: document.getElementById("save-share-btn"),
+    saveShareStatus: document.getElementById("save-share-status"),
     doneBankInfo: document.getElementById("done-bank-info"),
     doneLineLink: document.getElementById("done-line-link"),
     restartBtn: document.getElementById("restart-btn"),
@@ -84,6 +86,7 @@
     deliveryMethod: null, // "pickup" | "delivery"
     currentStepKey: "products",
     submitting: false,
+    lastOrder: null,
   };
 
   function isTrue(v) {
@@ -751,23 +754,27 @@
 
     els.doneOrderId.textContent = order.order_id;
 
-    els.doneFulfillment.textContent = fulfillmentSummaryText();
+    var fulfillment = fulfillmentSummaryText();
+    els.doneFulfillment.textContent = fulfillment;
 
-    els.doneOrderItems.innerHTML = "";
-    (order.items || []).forEach(function (item) {
-      // 訂單回傳的 product_name 是 Sheets 上的原始商品名稱，同一組大/小規格會共用同一個名稱，
-      // 這裡比對還留在記憶體裡的商品清單，把 variant_label 補回去，避免明細看起來像是重複品項。
+    // 訂單回傳的 product_name 是 Sheets 上的原始商品名稱，同一組大/小規格會共用同一個名稱，
+    // 這裡比對還留在記憶體裡的商品清單，把 variant_label 補回去，避免明細看起來像是重複品項。
+    var displayItems = (order.items || []).map(function (item) {
       var product = state.products.find(function (p) {
         return p.product_id === item.product_id;
       });
       var name = item.product_name;
       if (product && product.variant_label) name += "（" + product.variant_label + "）";
+      return { name: name, quantity: item.quantity, subtotal: item.subtotal };
+    });
 
+    els.doneOrderItems.innerHTML = "";
+    displayItems.forEach(function (item) {
       var row = document.createElement("div");
       row.className = "summary-row";
       row.innerHTML =
         "<span>" +
-        escapeHtml(name) +
+        escapeHtml(item.name) +
         ' <span class="sub">× ' +
         item.quantity +
         "</span></span><span>" +
@@ -784,6 +791,15 @@
     }
     var grandTotal = (order.total || 0) + fee;
     els.doneOrderTotal.textContent = money(grandTotal);
+
+    state.lastOrder = {
+      order_id: order.order_id,
+      fulfillment: fulfillment,
+      items: displayItems,
+      fee: fee,
+      total: grandTotal,
+    };
+    setShareStatus("");
 
     var s = state.settings;
     els.doneBankInfo.innerHTML =
@@ -816,6 +832,127 @@
       "</span></div>"
     );
   }
+
+  // ---------- 完成頁：分享／儲存購買明細 ----------
+
+  function setShareStatus(text) {
+    if (!text) {
+      els.saveShareStatus.classList.add("hidden");
+      els.saveShareStatus.textContent = "";
+      return;
+    }
+    els.saveShareStatus.textContent = text;
+    els.saveShareStatus.classList.remove("hidden");
+  }
+
+  function buildOrderShareText(order) {
+    var shopName = state.settings.shop_name || "訂購";
+    var lines = [shopName + " 訂購明細", "訂單編號：" + order.order_id, order.fulfillment, ""];
+    order.items.forEach(function (item) {
+      lines.push(item.name + " × " + item.quantity + "　" + money(item.subtotal));
+    });
+    if (order.fee > 0) lines.push("低溫宅配運費　" + money(order.fee));
+    lines.push("總計　" + money(order.total));
+    return lines.join("\n");
+  }
+
+  var html2canvasPromise = null;
+  function loadHtml2Canvas() {
+    if (window.html2canvas) return Promise.resolve(window.html2canvas);
+    if (!html2canvasPromise) {
+      html2canvasPromise = new Promise(function (resolve, reject) {
+        var script = document.createElement("script");
+        script.src = "js/vendor/html2canvas.min.js";
+        script.onload = function () {
+          resolve(window.html2canvas);
+        };
+        script.onerror = function () {
+          reject(new Error("圖片功能載入失敗"));
+        };
+        document.body.appendChild(script);
+      });
+    }
+    return html2canvasPromise;
+  }
+
+  // 圖片產生失敗（載入失敗、渲染出錯等）就回傳 null，讓呼叫端退回純文字分享，不擋住整體流程。
+  async function captureOrderImage(order) {
+    try {
+      var html2canvas = await loadHtml2Canvas();
+      var target = document.querySelector(".done-card-detail");
+      var canvas = await html2canvas(target, { backgroundColor: "#ffffff", scale: 2 });
+      var blob = await new Promise(function (resolve) {
+        canvas.toBlob(resolve, "image/png");
+      });
+      if (!blob) return null;
+      return new File([blob], order.order_id + ".png", { type: "image/png" });
+    } catch {
+      return null;
+    }
+  }
+
+  async function copyTextToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    var textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textarea);
+  }
+
+  function downloadFile(file, filename) {
+    var url = URL.createObjectURL(file);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () {
+      URL.revokeObjectURL(url);
+    }, 1000);
+  }
+
+  els.saveShareBtn.addEventListener("click", async function () {
+    var order = state.lastOrder;
+    if (!order) return;
+
+    var originalLabel = els.saveShareBtn.textContent;
+    els.saveShareBtn.disabled = true;
+    els.saveShareBtn.textContent = "準備中…";
+    setShareStatus("");
+
+    try {
+      var text = buildOrderShareText(order);
+      var imageFile = await captureOrderImage(order);
+
+      if (imageFile && navigator.share && navigator.canShare && navigator.canShare({ files: [imageFile] })) {
+        await navigator.share({ title: "訂購明細", text: text, files: [imageFile] });
+        setShareStatus("已開啟分享選單。");
+      } else if (navigator.share) {
+        await navigator.share({ title: "訂購明細", text: text });
+        setShareStatus("已開啟分享選單。");
+      } else {
+        await copyTextToClipboard(text);
+        if (imageFile) downloadFile(imageFile, order.order_id + ".png");
+        setShareStatus("已複製明細文字" + (imageFile ? "，圖片也已下載" : "") + "，請自行貼到 LINE。");
+      }
+    } catch (err) {
+      if (!err || err.name !== "AbortError") {
+        setShareStatus("分享失敗，請直接截圖保留這個畫面。");
+      }
+    } finally {
+      els.saveShareBtn.disabled = false;
+      els.saveShareBtn.textContent = originalLabel;
+    }
+  });
 
   els.copyOrderIdBtn.addEventListener("click", async function () {
     var text = els.doneOrderId.textContent;
