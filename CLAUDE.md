@@ -12,7 +12,11 @@
 - ✅ Phase 3-5：PIN 登入 + 短期 Token 驗證機制（已完成，見下方備註，**Phase 3 全部完成**）
 - ✅ Phase 4：顧客預購網站前端（已完成，見下方備註）
 - ✅ Phase 5：預購總量上限控制邏輯（已完成，見下方備註）
-- ⏭️ 下一步：Phase 6（PWA 串接真實 API）
+- 🔄 顧客介面改版（進行中）：設計已定案（詳見 `HANDOFF_CUSTOMER_UI.md`），
+  順序為「先做顧客介面 → 確認後改 Google Sheets 表結構與 Worker API →
+  最後評估老闆 PWA 是否連動」。分支：`claude/yggbagle-site-ui-updates-hhavht`
+- ⏭️ 下一步：接續顧客介面改版；Phase 6（PWA 串接真實 API）要等這次改版
+  併回 main 之後才開始，因為這次會動到 Google Sheets 表結構
 
 **Phase 3-1 備註**：
 - 已建立 Google Cloud Service Account，金鑰以「秘密」類型設定在 Cloudflare Dashboard 的 Worker 環境變數（`SPREADSHEET_ID`、`GOOGLE_SERVICE_ACCOUNT_KEY`），沒有寫進程式碼或 repo
