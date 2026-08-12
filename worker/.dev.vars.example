@@ -1,0 +1,5 @@
+# 複製這個檔案為 .dev.vars（不要 commit），填入本機測試用的值。
+# .dev.vars 只給 `wrangler dev` 本機測試用；正式環境要用 `wrangler secret put` 設定。
+
+SPREADSHEET_ID=你的 Google Sheets 試算表 ID（網址 /d/ 和 /edit 中間那一串）
+GOOGLE_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}
