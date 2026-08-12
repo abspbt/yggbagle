@@ -1,0 +1,7 @@
+name = "ygg-hidden-star-9fe8"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+# SPREADSHEET_ID 和 GOOGLE_SERVICE_ACCOUNT_KEY 都已經在 Cloudflare Dashboard
+# 的「設定 → 變數與機密」用「秘密」類型設定好了，這裡不用（也不要）重複宣告，
+# 避免 `wrangler deploy` 時把已經設定好的機密值覆蓋掉。

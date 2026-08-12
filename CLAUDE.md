@@ -5,7 +5,24 @@
 - ✅ Phase 0：老闆 PWA 資訊架構 + Wireframe（已完成，8 頁全部定案）
 - ✅ Phase 1：假資料版 PWA（已完成，已併入 main，PR #2）
 - ✅ Phase 2：Google Sheets 資料表設計（已完成，表已建到 Google 雲端空間）
-- ⏭️ 下一步：Phase 3（Cloudflare Worker API，讀寫這份 Google Sheets）
+- ✅ Phase 3-1：Worker 專案初始化 + Google Sheets API 授權設定（已完成，見下方備註）
+- ✅ Phase 3-2：讀取 API（已完成，見下方備註）
+- ⏭️ 下一步：Phase 3-3（寫入 API：POST 建立訂單，含訂單編號產生邏輯 `ORD-YYYYMMDD-XXXX`）
+
+**Phase 3-1 備註**：
+- 已建立 Google Cloud Service Account，金鑰以「秘密」類型設定在 Cloudflare Dashboard 的 Worker 環境變數（`SPREADSHEET_ID`、`GOOGLE_SERVICE_ACCOUNT_KEY`），沒有寫進程式碼或 repo
+- Worker 名稱：`ygg-hidden-star-9fe8`（Cloudflare 自動命名，`worker/wrangler.toml` 已同步）
+- 測試 endpoint `/api/test-sheets` 已驗證能透過 Service Account 讀到 Google Sheets 資料
+- 踩過的坑：Phase 2 的試算表原本是以 `.xlsx` 檔案上傳到 Google 雲端硬碟，Sheets API 不支援讀寫 Office 檔案格式，後來用「另存為 Google 試算表」轉成原生 Google Sheets 格式，換了新的 `SPREADSHEET_ID` 才能讀取成功
+- **老闆不熟悉終端機下指令**，之後的部署都優先用 Cloudflare Dashboard 網頁編輯器操作（`worker/dashboard-single-file.js` 是專門給網頁編輯器貼上用的合併版程式碼），除非必要盡量避免要求在終端機執行指令
+
+**Phase 3-2 備註**：
+- 新增三支讀取 API：`GET /campaigns`（目前 active 檔期 + 取貨時段）、`GET /products`（active 檔期上架中商品，已訂購量即時從 `Order_Items` 加總）、`GET /orders`（訂單列表 + 每筆訂單的品項明細）
+- 延續 Phase 2 設計原則：已訂購量不存彙總欄位，Worker 讀取時即時從 `Order_Items` 加總算出
+- `worker/src/sheets.js` 新增 `getSheetRows()`，把整張表轉成「第一列是欄位名稱」的物件陣列，之後的 API 都靠這個讀資料
+- 加了 CORS header，因為之後 Phase 4/6 前端會從別的網域打這個 Worker
+- `worker/dashboard-single-file.js` 已同步更新，API 細節與範例回應格式見 `worker/README.md`
+- 開發這次時發現 Phase 3-1 分支當時還沒併入 main，已在 `claude/phase-3-2-api-read-0rkozk` 分支裡先合併進來——**併 PR 時要注意，如果 Phase 3-1 有獨立的 PR 還沒關掉，這邊會重複收錄**
 
 Phase 0 各頁 Wireframe 定案內容已整理成交接摘要，見對話紀錄
 （今日 Dashboard、商品管理、訂單列表+付款確認、公告設定、
