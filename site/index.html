@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>歪嘴雞烘焙｜線上預購</title>
+<meta name="description" content="歪嘴雞烘焙預購系統｜手工窯烤麵包線上預購">
+<meta name="theme-color" content="#D97B3F">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <header class="site-header">
+    <h1 id="shop-name">歪嘴雞烘焙</h1>
+    <p id="shop-intro" class="muted"></p>
+  </header>
+
+  <div id="announcement" class="announcement hidden"></div>
+
+  <main id="main" aria-live="polite">
+    <div id="loading" class="state-block">
+      <div class="skeleton-line" style="width:60%"></div>
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
+    </div>
+
+    <div id="paused" class="state-block hidden">
+      <p class="state-icon">🔴</p>
+      <p id="pause-message" class="state-text"></p>
+    </div>
+
+    <div id="empty" class="state-block hidden">
+      <p class="state-icon">📭</p>
+      <p class="state-text">目前沒有開放中的預購檔期，請稍後再回來看看。</p>
+    </div>
+
+    <div id="error" class="state-block hidden">
+      <p class="state-icon">⚠️</p>
+      <p id="error-message" class="state-text">連線發生問題，請稍後再試一次。</p>
+      <button id="retry-btn" class="btn btn-secondary">重新整理</button>
+    </div>
+
+    <!-- Step 1：選商品 -->
+    <section id="step-products" class="step hidden">
+      <h2 class="step-title">1. 選商品</h2>
+      <div id="product-list" class="product-list"></div>
+    </section>
+
+    <!-- Step 2：選取貨時段 -->
+    <section id="step-slot" class="step hidden">
+      <h2 class="step-title">2. 選取貨時段</h2>
+      <div id="slot-list" class="slot-list"></div>
+    </section>
+
+    <!-- Step 3：填資料 -->
+    <section id="step-form" class="step hidden">
+      <h2 class="step-title">3. 填寫聯絡資訊</h2>
+      <form id="order-form">
+        <label class="field">
+          <span>姓名</span>
+          <input type="text" id="customer-name" name="customer_name" required autocomplete="name" placeholder="請輸入取貨人姓名">
+        </label>
+        <label class="field">
+          <span>電話</span>
+          <input type="tel" id="customer-phone" name="customer_phone" required autocomplete="tel" placeholder="請輸入聯絡電話" inputmode="tel">
+        </label>
+        <label class="field">
+          <span>備註（選填）</span>
+          <textarea id="customer-note" name="note" rows="2" placeholder="有其他需求可以寫在這裡"></textarea>
+        </label>
+      </form>
+    </section>
+
+    <!-- 訂單摘要 + 送出 -->
+    <section id="step-summary" class="step hidden">
+      <h2 class="step-title">訂單摘要</h2>
+      <div id="summary-items" class="summary-items"></div>
+      <div class="summary-total">
+        <span>總計</span>
+        <span id="summary-total-amount">NT$ 0</span>
+      </div>
+      <p id="submit-error" class="error-text hidden"></p>
+      <button id="submit-btn" class="btn btn-primary" type="button" disabled>送出訂單</button>
+    </section>
+
+    <!-- 完成頁 -->
+    <section id="step-done" class="step hidden">
+      <p class="state-icon">✅</p>
+      <h2 class="step-title" style="text-align:center">訂單已送出！</h2>
+      <div class="done-card">
+        <p class="done-label">訂單編號</p>
+        <p id="done-order-id" class="done-order-id"></p>
+        <button id="copy-order-id" class="btn btn-secondary btn-small">複製訂單編號</button>
+      </div>
+      <div class="done-card">
+        <p class="done-label">請匯款至</p>
+        <div id="done-bank-info" class="bank-info"></div>
+      </div>
+      <p class="done-hint">請完成匯款後，將截圖傳到 LINE 讓我們確認，謝謝您的預購！</p>
+      <a id="done-line-link" class="btn btn-primary" href="#" target="_blank" rel="noopener">前往 LINE 傳送截圖</a>
+      <button id="restart-btn" class="btn btn-secondary">再訂購一筆</button>
+    </section>
+  </main>
+
+  <div id="cart-bar" class="cart-bar hidden">
+    <div class="cart-bar-info">
+      <span id="cart-count">0 項</span>
+      <span id="cart-total">NT$ 0</span>
+    </div>
+    <button id="cart-next-btn" class="btn btn-primary btn-small">下一步</button>
+  </div>
+</div>
+<script src="js/app.js"></script>
+</body>
+</html>

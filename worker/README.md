@@ -200,6 +200,33 @@ npm run deploy
 }
 ```
 
+### `GET /settings`（Phase 4 新增）
+
+公開讀取店家資料、公告、預購開關等設定值，給顧客網站用。回傳 `Settings` 分頁目前全部的 key-value（裡面沒有顧客個資，都是可以公開的店家資訊）。
+
+```json
+{
+  "ok": true,
+  "settings": {
+    "shop_name": "歪嘴雞烘焙",
+    "shop_intro": "手工窯烤麵包，每週三、六限量預購。",
+    "shop_line": "@ykjbakery",
+    "shop_phone": "0912-345-678",
+    "shop_address": "台中市西區美村路一段123號",
+    "bank_name": "玉山銀行 808",
+    "bank_account": "1234-567-890123",
+    "bank_owner": "陳O雯",
+    "announcement_text": "本週六預購開放中！",
+    "announcement_visible": "TRUE",
+    "preorder_open": "TRUE",
+    "pause_message": "目前暫停接單，恢復時間將於粉絲頁公告，謝謝您的支持！"
+  }
+}
+```
+
+- 老闆用 `PATCH /settings`（需登入）改的值，這支馬上就會讀到最新的
+- `announcement_visible`、`preorder_open` 是文字 `"TRUE"`/`"FALSE"`（跟 Sheets 資料驗證下拉選單的值一致），前端要自己轉成布林值判斷
+
 ### `GET /orders`
 
 > 🔒 **這支從 Phase 3-5 開始需要登入**（訂單裡有顧客姓名電話，不能公開），要帶 `Authorization: Bearer <token>`，見下方「PIN 登入 API」。
@@ -254,9 +281,12 @@ npm run deploy
 - `campaign_id`、`customer_name`、`customer_phone`、`pickup_slot_id`、`items` 為必填，`items` 至少要有一筆，`note` 可省略
 - 商品單價一律以 Sheets 上 `Products` 分頁當下的資料為準，**不採信前端傳來的價格**，避免被竄改
 - 會檢查：檔期是否為 `active`、取貨時段是否屬於這個檔期、商品是否存在／上架、單一商品數量是否超過該商品的 `max_per_order`
-- **檔期/時段的總量上限（`total_quantity_cap`）檢查是 Phase 5 的範圍，這支目前不會擋**，超賣風險留到 Phase 5 處理
+- **檔期總量上限（`Campaigns.total_quantity_cap`，Phase 5 新增）**：把這個檔期所有「未取消」訂單的 `Order_Items` 數量加總，加上這筆新訂單要訂的數量，超過 `total_quantity_cap` 就擋下，回傳 HTTP 400。`total_quantity_cap` 是 0（或空白）代表不限制，不會做這項檢查
+  - 擋下時的錯誤訊息會附上剩餘可訂數量，例如：`本檔期預購已達上限，剩餘 3 份，訂單需求 5 份，請減少數量後再試`；剩餘 0 份時顯示「本檔期預購已額滿，請等待下一檔期」
+  - 這是「讀了再寫」的簡單檢查，不是原子鎖——跟訂單編號流水號一樣的取捨，極端情況下（幾乎同時送出兩張訂單）可能多接一兩份，老闆手動調整即可
+  - 目前總量上限是「整個檔期共用一個上限」，不是每個取貨時段各自獨立算（`PickupSlots` 表沒有各時段自己的上限欄位）
 - 訂單編號格式 `ORD-YYYYMMDD-XXXX`（西元年月日 + 當天流水號，從 `0001` 開始），日期以台北時區計算
-- 這是簡單的「讀了再寫」（讀 `Orders` 找當天最大流水號 +1），不是原子操作——極端情況下（幾乎同時送出兩張訂單）理論上有極低機率撞號，跟 Phase 5 的總量控制走一樣的取捨（老闆手動處理即可），不做額外的鎖
+- 這是簡單的「讀了再寫」（讀 `Orders` 找當天最大流水號 +1），不是原子操作——極端情況下（幾乎同時送出兩張訂單）理論上有極低機率撞號，跟總量控制走一樣的取捨（老闆手動處理即可），不做額外的鎖
 
 **成功回應**（HTTP 201）：
 
@@ -282,10 +312,14 @@ npm run deploy
 }
 ```
 
-**失敗回應**（HTTP 400，例如檔期未開放、商品已下架、超過 `max_per_order` 等）：
+**失敗回應**（HTTP 400，例如檔期未開放、商品已下架、超過 `max_per_order`、超過檔期總量上限等）：
 
 ```json
 { "ok": false, "error": "此檔期目前未開放預購" }
+```
+
+```json
+{ "ok": false, "error": "本檔期預購已達上限，剩餘 3 份，訂單需求 5 份，請減少數量後再試" }
 ```
 
 ## 老闆端寫入 API（Phase 3-4）
@@ -418,7 +452,7 @@ Token 是 Worker 自己用 `TOKEN_SECRET` 簽出來的一串「到期時間 + HM
 ## 檔案結構
 
 - `wrangler.toml`：Worker 設定（名稱、非機密環境變數）
-- `src/index.js`：Worker 進入點，包含讀取 API（`/api/test-sheets`、`/products`、`/campaigns`、`/orders` 的 GET）、寫入 API（`POST /orders`、`POST /products`、`PATCH /products/:id`、`PATCH /orders/:id`、`PATCH /settings`），以及 `POST /auth/login` PIN 登入
+- `src/index.js`：Worker 進入點，包含讀取 API（`/api/test-sheets`、`/products`、`/campaigns`、`/settings`、`/orders` 的 GET）、寫入 API（`POST /orders`、`POST /products`、`PATCH /products/:id`、`PATCH /orders/:id`、`PATCH /settings`），以及 `POST /auth/login` PIN 登入
 - `src/auth.js`：老闆登入用的短期 token 簽發與驗證（HMAC-SHA256，純 Web Crypto API，無額外套件、不需要 D1/KV）
 - `src/googleAuth.js`：用 Service Account JSON 金鑰換 Google API access token（RS256 JWT 簽章，純 Web Crypto API，無額外套件）
 - `src/sheets.js`：呼叫 Google Sheets API 讀寫資料——`getSheetRows` 把整張表轉成物件陣列、`appendRows` 附加新列、`findRowByKey` 依欄位值找到某一列、`updateRow` 覆寫指定列
@@ -427,5 +461,5 @@ Token 是 Worker 自己用 `TOKEN_SECRET` 簽出來的一串「到期時間 + HM
 
 ## 下一步（Phase 4）
 
-- 顧客預購網站前端，串接目前公開不需要登入的 `GET /products`、`GET /campaigns`、`POST /orders`
+- 顧客預購網站前端，串接目前公開不需要登入的 `GET /products`、`GET /campaigns`、`GET /settings`、`POST /orders`
 - Phase 6 會把老闆 PWA 從假資料換成真的串接這裡的所有 API，包含 `POST /auth/login`

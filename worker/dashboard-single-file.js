@@ -287,7 +287,11 @@ const CORS_HEADERS = {
 function json(data, init = {}) {
   return Response.json(data, {
     ...init,
-    headers: { ...CORS_HEADERS, ...(init.headers || {}) },
+    headers: {
+      ...CORS_HEADERS,
+      "Content-Type": "application/json; charset=utf-8",
+      ...(init.headers || {}),
+    },
   });
 }
 
@@ -400,8 +404,8 @@ function generateOrderId(existingOrders, dateCompact) {
 }
 
 // POST /orders：顧客下單，商品單價一律以 Sheets 上的 Products 資料為準，不採信前端傳來的價格。
-// 這裡只驗證「檔期是否開放、時段是否屬於這個檔期、單一商品是否超過 max_per_order」，
-// 檔期/時段的總量上限檢查留給 Phase 5 處理。
+// 驗證項目：檔期是否開放、時段是否屬於這個檔期、單一商品是否超過 max_per_order、
+// 檔期總量（Campaigns.total_quantity_cap）是否還有餘量。
 async function handleCreateOrder(request, env) {
   let body;
   try {
@@ -424,11 +428,12 @@ async function handleCreateOrder(request, env) {
 
   const { accessToken, spreadsheetId } = await getAuthedContext(env);
 
-  const [campaigns, slots, products, existingOrders] = await Promise.all([
+  const [campaigns, slots, products, existingOrders, existingOrderItems] = await Promise.all([
     getSheetRows(accessToken, spreadsheetId, "Campaigns"),
     getSheetRows(accessToken, spreadsheetId, "PickupSlots"),
     getSheetRows(accessToken, spreadsheetId, "Products"),
     getSheetRows(accessToken, spreadsheetId, "Orders"),
+    getSheetRows(accessToken, spreadsheetId, "Order_Items"),
   ]);
 
   const campaign = campaigns.find((c) => c.campaign_id === campaign_id);
@@ -468,6 +473,34 @@ async function handleCreateOrder(request, env) {
       quantity,
       subtotal: unitPrice * quantity,
     });
+  }
+
+  const requestedQuantity = orderItems.reduce((sum, item) => sum + item.quantity, 0);
+  const quantityCap = toNumber(campaign.total_quantity_cap);
+  if (quantityCap > 0) {
+    const countedOrderIds = new Set(
+      existingOrders
+        .filter((o) => o.campaign_id === campaign_id && o.order_status !== "cancelled")
+        .map((o) => o.order_id)
+    );
+    const alreadyOrdered = existingOrderItems.reduce(
+      (sum, item) => (countedOrderIds.has(item.order_id) ? sum + toNumber(item.quantity) : sum),
+      0
+    );
+
+    if (alreadyOrdered + requestedQuantity > quantityCap) {
+      const remaining = Math.max(0, quantityCap - alreadyOrdered);
+      return json(
+        {
+          ok: false,
+          error:
+            remaining > 0
+              ? `本檔期預購已達上限，剩餘 ${remaining} 份，訂單需求 ${requestedQuantity} 份，請減少數量後再試`
+              : "本檔期預購已額滿，請等待下一檔期",
+        },
+        { status: 400 }
+      );
+    }
   }
 
   const total = orderItems.reduce((sum, item) => sum + item.subtotal, 0);
@@ -747,6 +780,20 @@ async function handleUpdateSettings(request, env) {
   return json({ ok: true, settings: updated });
 }
 
+// GET /settings：公開讀取店家資料、公告、預購開關等設定值，給顧客網站用。
+// Settings 分頁是 key-value 格式，這裡全部回傳（裡面沒有顧客個資，都是可公開的店家資訊）。
+async function handleGetSettings(env) {
+  const { accessToken, spreadsheetId } = await getAuthedContext(env);
+  const rows = await getSheetRows(accessToken, spreadsheetId, "Settings");
+
+  const settings = {};
+  for (const row of rows) {
+    if (row.setting_key) settings[row.setting_key] = row.setting_value;
+  }
+
+  return json({ ok: true, settings });
+}
+
 // GET /campaigns：目前 active 的檔期，含各自的取貨時段。
 async function handleCampaigns(env) {
   const { accessToken, spreadsheetId } = await getAuthedContext(env);
@@ -906,9 +953,10 @@ export default {
         return json({ ok: true, values });
       }
 
-      // 顧客網站要讀的商品/檔期資訊，公開不需要登入。
+      // 顧客網站要讀的商品/檔期/店家設定資訊，公開不需要登入。
       if (url.pathname === "/products") return await handleProducts(env);
       if (url.pathname === "/campaigns") return await handleCampaigns(env);
+      if (url.pathname === "/settings") return await handleGetSettings(env);
 
       // 訂單列表含顧客姓名電話，只有老闆能看，需要登入。
       if (url.pathname === "/orders") {
