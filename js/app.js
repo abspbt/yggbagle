@@ -632,7 +632,7 @@ function renderProductsList() {
           <div class="product-thumb">${p.photo}</div>
           <div class="product-main">
             <div class="product-name">${escapeHtml(p.name)}</div>
-            <div class="product-meta">${fmtMoney(p.price)} · 限購 ${p.maxPerOrder} 個</div>
+            <div class="product-meta">${fmtMoney(p.price)} · 限購 ${p.maxPerOrder} 袋</div>
             <div class="product-ordered">已訂購 ${getProductOrderedQty(p)}</div>
           </div>
         </button>
@@ -703,7 +703,7 @@ function renderProductEdit(id) {
         <input class="field-input" id="f-price" type="number" inputmode="numeric" value="${p.price}" placeholder="0" />
       </div>
       <div class="field">
-        <label class="field-label">單筆訂單限購數量</label>
+        <label class="field-label">單筆訂單限購數量（袋）</label>
         <input class="field-input" id="f-max" type="number" inputmode="numeric" value="${p.maxPerOrder}" placeholder="0" />
       </div>
       <div class="field">
