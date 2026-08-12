@@ -1,8 +1,7 @@
-name = "yggbagle-worker"
+name = "ygg-hidden-star-9fe8"
 main = "src/index.js"
 compatibility_date = "2024-11-01"
 
-# 這兩個是「非機密」設定，可以直接寫在這裡並 commit 進 repo。
-# 機密（Service Account 金鑰）一律用 `wrangler secret put` 設定，不要寫在這個檔案。
-[vars]
-SPREADSHEET_ID = "請填入你的 Google Sheets 試算表 ID"
+# SPREADSHEET_ID 和 GOOGLE_SERVICE_ACCOUNT_KEY 都已經在 Cloudflare Dashboard
+# 的「設定 → 變數與機密」用「秘密」類型設定好了，這裡不用（也不要）重複宣告，
+# 避免 `wrangler deploy` 時把已經設定好的機密值覆蓋掉。

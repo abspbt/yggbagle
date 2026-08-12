@@ -81,21 +81,22 @@ npm run dev
 
 ### 部署到 Cloudflare（正式環境）
 
-正式環境**不要**把金鑰寫進 `wrangler.toml` 或任何會 commit 進 repo 的檔案，改用 Cloudflare 的 secret 機制：
+如果你已經在 Cloudflare Dashboard 的「Workers 和 Pages → 你的 Worker → 設定 → 變數與機密」手動新增過 `SPREADSHEET_ID` 和 `GOOGLE_SERVICE_ACCOUNT_KEY`（都設成「秘密」類型），這步就不用再用指令重複設定，`wrangler.toml` 也刻意沒有宣告這兩個變數，避免部署時把 Dashboard 上設定好的值覆蓋掉。
+
+`wrangler.toml` 的 `name` 要跟 Dashboard 上這個 Worker 的名字完全一致（例如 `ygg-hidden-star-9fe8`），部署才會部署到「同一個」已經設好機密的 Worker，而不是另外建一個新的。
 
 ```bash
 npx wrangler login
-npx wrangler secret put GOOGLE_SERVICE_ACCOUNT_KEY
-# 系統會提示貼上內容，貼上整個 JSON（可以是多行，這裡不用轉單行）
-```
-
-`SPREADSHEET_ID` 不是機密，已經寫在 `wrangler.toml` 的 `[vars]`，部署前記得把裡面的預留字串換成實際的試算表 ID。
-
-部署：
-
-```bash
 npm run deploy
 ```
+
+部署完，瀏覽器打開 `https://ygg-hidden-star-9fe8.<你的 Cloudflare 帳號 subdomain>.workers.dev/api/test-sheets`（正式網址可以在 Dashboard「概觀」頁看到），確認回傳 `{"ok":true,"values":[...]}`。
+
+> 如果之後想改用指令設定機密（例如要輪替金鑰），可以用：
+> ```bash
+> npx wrangler secret put GOOGLE_SERVICE_ACCOUNT_KEY
+> npx wrangler secret put SPREADSHEET_ID
+> ```
 
 ## 檔案結構
 
