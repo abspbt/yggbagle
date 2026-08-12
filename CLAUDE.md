@@ -5,7 +5,15 @@
 - ✅ Phase 0：老闆 PWA 資訊架構 + Wireframe（已完成，8 頁全部定案）
 - ✅ Phase 1：假資料版 PWA（已完成，已併入 main，PR #2）
 - ✅ Phase 2：Google Sheets 資料表設計（已完成，表已建到 Google 雲端空間）
-- ⏭️ 下一步：Phase 3（Cloudflare Worker API，讀寫這份 Google Sheets）
+- ✅ Phase 3-1：Worker 專案初始化 + Google Sheets API 授權設定（已完成，見下方備註）
+- ⏭️ 下一步：Phase 3-2（讀取 API：GET 商品列表、GET 檔期資訊、GET 訂單列表）
+
+**Phase 3-1 備註**：
+- 已建立 Google Cloud Service Account，金鑰以「秘密」類型設定在 Cloudflare Dashboard 的 Worker 環境變數（`SPREADSHEET_ID`、`GOOGLE_SERVICE_ACCOUNT_KEY`），沒有寫進程式碼或 repo
+- Worker 名稱：`ygg-hidden-star-9fe8`（Cloudflare 自動命名，`worker/wrangler.toml` 已同步）
+- 測試 endpoint `/api/test-sheets` 已驗證能透過 Service Account 讀到 Google Sheets 資料
+- 踩過的坑：Phase 2 的試算表原本是以 `.xlsx` 檔案上傳到 Google 雲端硬碟，Sheets API 不支援讀寫 Office 檔案格式，後來用「另存為 Google 試算表」轉成原生 Google Sheets 格式，換了新的 `SPREADSHEET_ID` 才能讀取成功
+- **老闆不熟悉終端機下指令**，之後的部署都優先用 Cloudflare Dashboard 網頁編輯器操作（`worker/dashboard-single-file.js` 是專門給網頁編輯器貼上用的合併版程式碼），除非必要盡量避免要求在終端機執行指令
 
 Phase 0 各頁 Wireframe 定案內容已整理成交接摘要，見對話紀錄
 （今日 Dashboard、商品管理、訂單列表+付款確認、公告設定、
