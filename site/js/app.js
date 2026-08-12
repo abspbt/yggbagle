@@ -49,6 +49,9 @@
     stepDone: document.getElementById("step-done"),
     doneOrderId: document.getElementById("done-order-id"),
     copyOrderIdBtn: document.getElementById("copy-order-id"),
+    doneFulfillment: document.getElementById("done-fulfillment"),
+    doneOrderItems: document.getElementById("done-order-items"),
+    doneOrderTotal: document.getElementById("done-order-total"),
     doneBankInfo: document.getElementById("done-bank-info"),
     doneLineLink: document.getElementById("done-line-link"),
     restartBtn: document.getElementById("restart-btn"),
@@ -729,6 +732,17 @@
     }
   });
 
+  function fulfillmentSummaryText() {
+    if (state.deliveryMethod === "delivery") {
+      return "🚚 低溫宅配　" + els.deliveryAddress.value.trim();
+    }
+    var slots = (state.campaign && state.campaign.pickup_slots) || [];
+    var slot = slots.find(function (s) {
+      return s.slot_id === state.selectedSlotId;
+    });
+    return slot ? "🏠 自取　" + slot.date + "　" + slot.time_range : "🏠 自取";
+  }
+
   function showDone(order) {
     setStepsVisible(false);
     els.stepDone.classList.remove("hidden");
@@ -737,12 +751,46 @@
 
     els.doneOrderId.textContent = order.order_id;
 
+    els.doneFulfillment.textContent = fulfillmentSummaryText();
+
+    els.doneOrderItems.innerHTML = "";
+    (order.items || []).forEach(function (item) {
+      // 訂單回傳的 product_name 是 Sheets 上的原始商品名稱，同一組大/小規格會共用同一個名稱，
+      // 這裡比對還留在記憶體裡的商品清單，把 variant_label 補回去，避免明細看起來像是重複品項。
+      var product = state.products.find(function (p) {
+        return p.product_id === item.product_id;
+      });
+      var name = item.product_name;
+      if (product && product.variant_label) name += "（" + product.variant_label + "）";
+
+      var row = document.createElement("div");
+      row.className = "summary-row";
+      row.innerHTML =
+        "<span>" +
+        escapeHtml(name) +
+        ' <span class="sub">× ' +
+        item.quantity +
+        "</span></span><span>" +
+        money(item.subtotal) +
+        "</span>";
+      els.doneOrderItems.appendChild(row);
+    });
+    var fee = state.deliveryMethod === "delivery" ? shippingFee() : 0;
+    if (fee > 0) {
+      var feeRow = document.createElement("div");
+      feeRow.className = "summary-row fee";
+      feeRow.innerHTML = "<span>低溫宅配運費</span><span>" + money(fee) + "</span>";
+      els.doneOrderItems.appendChild(feeRow);
+    }
+    var grandTotal = (order.total || 0) + fee;
+    els.doneOrderTotal.textContent = money(grandTotal);
+
     var s = state.settings;
     els.doneBankInfo.innerHTML =
       bankRow("銀行", s.bank_name) +
       bankRow("帳號", s.bank_account) +
       bankRow("戶名", s.bank_owner) +
-      bankRow("金額", money(order.total));
+      bankRow("金額", money(grandTotal));
 
     var lineHandle = s.shop_line || "";
     if (lineHandle) {

@@ -151,11 +151,21 @@
         <p id="done-order-id" class="done-order-id"></p>
         <button id="copy-order-id" class="btn btn-secondary btn-small">複製訂單編號</button>
       </div>
+      <div class="done-card done-card-detail">
+        <p class="done-label">訂購明細</p>
+        <p id="done-fulfillment" class="done-meta"></p>
+        <div id="done-order-items" class="summary-items"></div>
+        <div class="summary-total">
+          <span>總計</span>
+          <span id="done-order-total">NT$ 0</span>
+        </div>
+      </div>
+      <p class="done-hint done-hint-strong">📸 請截圖保留這一頁的訂購明細，方便日後彼此對帳。</p>
       <div class="done-card">
         <p class="done-label">請匯款至</p>
         <div id="done-bank-info" class="bank-info"></div>
       </div>
-      <p class="done-hint">請完成匯款後，將截圖傳到 LINE 讓我們確認，謝謝您的預購！</p>
+      <p class="done-hint">請完成匯款後，將匯款截圖傳到 LINE 讓我們確認，謝謝您的預購！</p>
       <a id="done-line-link" class="btn btn-primary" href="#" target="_blank" rel="noopener">前往 LINE 傳送截圖</a>
       <button id="restart-btn" class="btn btn-secondary">再訂購一筆</button>
     </section>

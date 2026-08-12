@@ -647,11 +647,29 @@ a { color: inherit; }
 
 .bank-info .label { color: var(--color-text-muted); }
 
+.done-card-detail { text-align: left; }
+
+.done-card-detail .done-label { text-align: center; }
+
+.done-meta {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+
 .done-hint {
   text-align: center;
   color: var(--color-text-muted);
   font-size: 14px;
   margin: 0 0 16px;
+}
+
+.done-hint-strong {
+  color: var(--color-text);
+  font-weight: 600;
+  background: var(--color-warning-bg);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
 }
 
 @media (prefers-reduced-motion: reduce) {
