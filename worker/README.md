@@ -79,6 +79,8 @@ npm run dev
 
 瀏覽器打開 `http://localhost:8787/api/test-sheets`，如果看到 `{"ok":true,"values":[...]}` 就代表 Service Account 授權成功、Worker 能讀到 Sheets 資料。
 
+也可以打開 `http://localhost:8787/products`、`/campaigns`、`/orders` 測試 Phase 3-2 新增的讀取 API（見下方「讀取 API」章節）。
+
 ### 部署到 Cloudflare（正式環境）
 
 #### 方法 A：不用終端機，全部在網頁上做（推薦給不熟終端機的人）
@@ -89,6 +91,7 @@ npm run dev
 4. 打開這個 repo 裡的 `worker/dashboard-single-file.js`，把整份內容複製、貼進編輯器
 5. 按右上角「部署」（Deploy / Save and deploy）
 6. 部署完，瀏覽器打開該 Worker 的網址加上 `/api/test-sheets`（Worker 網址可以在「概觀」頁複製，長得像 `https://ygg-hidden-star-9fe8.你的帳號.workers.dev`），確認看到 `{"ok":true,"values":[...]}`
+7. 也可以打開網址加上 `/products`、`/campaigns`、`/orders`，確認看到 `{"ok":true,"products":[...]}` 這類回應（如果 Sheets 裡還沒有 status 是 `active` 的檔期，`/products` 和 `/campaigns` 會回傳空陣列，這是正常的，先去 `Campaigns` 分頁把某個檔期的 `status` 改成 `active` 再測試看看）
 
 之所以要用 `dashboard-single-file.js` 這份「整合版」而不是 `src/index.js`，是因為網頁版編輯器不像本機開發環境，沒辦法拆成多個檔案互相 `import`，所以把三個檔案的內容先合併成一份，貼上就能直接用。之後如果程式邏輯有改，也要記得同步更新這份檔案。
 
@@ -107,19 +110,92 @@ npm run deploy
 > npx wrangler secret put SPREADSHEET_ID
 > ```
 
+## 讀取 API（Phase 3-2）
+
+三個 endpoint 都是 `GET`，不需要帶任何參數，回傳格式都是 `{"ok": true, ...}`；失敗時是 `{"ok": false, "error": "..."}`（HTTP 狀態碼會是 4xx/5xx）。
+
+### `GET /campaigns`
+
+回傳目前 `status` 是 `active` 的檔期，每個檔期底下帶著自己的取貨時段（`PickupSlots`）。
+
+```json
+{
+  "ok": true,
+  "campaigns": [
+    {
+      "campaign_id": "C001",
+      "name": "8 月中秋預購",
+      "status": "active",
+      "start_date": "2026-08-10",
+      "end_date": "2026-08-20",
+      "total_quantity_cap": 200,
+      "pickup_slots": [
+        { "slot_id": "S001", "date": "2026-08-22", "time_range": "14:00-16:00" }
+      ]
+    }
+  ]
+}
+```
+
+### `GET /products`
+
+回傳目前 active 檔期、且上架中（`active` 勾選）的商品。`ordered_quantity` 是即時從 `Order_Items` 加總算出來的已訂購量（只算該商品所屬檔期、且訂單狀態不是 `cancelled` 的訂單），**不是**存在 Sheets 裡的欄位，延續 Phase 2 「不存彙總欄位」的原則。
+
+```json
+{
+  "ok": true,
+  "products": [
+    {
+      "product_id": "P001",
+      "campaign_id": "C001",
+      "name": "原味貝果（無餡）",
+      "category": "貝果",
+      "price": 45,
+      "max_per_order": 10,
+      "ordered_quantity": 12
+    }
+  ]
+}
+```
+
+### `GET /orders`
+
+給老闆後台看的訂單列表，每張訂單帶著自己的品項明細（`Order_Items`），依 `created_at` 新到舊排序。這支目前沒有依 active 檔期過濾，回傳全部訂單。
+
+```json
+{
+  "ok": true,
+  "orders": [
+    {
+      "order_id": "ORD-20260812-0001",
+      "campaign_id": "C001",
+      "created_at": "2026-08-12T10:30:00+08:00",
+      "customer_name": "王小明",
+      "customer_phone": "0912345678",
+      "pickup_slot_id": "S001",
+      "total": 450,
+      "payment_status": "pending",
+      "order_status": "new",
+      "note": "",
+      "items": [
+        { "product_id": "P001", "product_name": "原味貝果（無餡）", "unit_price": 45, "quantity": 10, "subtotal": 450 }
+      ]
+    }
+  ]
+}
+```
+
 ## 檔案結構
 
 - `wrangler.toml`：Worker 設定（名稱、非機密環境變數）
-- `src/index.js`：Worker 進入點，目前只有一個測試 endpoint `/api/test-sheets`
+- `src/index.js`：Worker 進入點，包含 `/api/test-sheets` 測試 endpoint 和 `/products`、`/campaigns`、`/orders` 讀取 API
 - `src/googleAuth.js`：用 Service Account JSON 金鑰換 Google API access token（RS256 JWT 簽章，純 Web Crypto API，無額外套件）
-- `src/sheets.js`：呼叫 Google Sheets API 讀取資料
+- `src/sheets.js`：呼叫 Google Sheets API 讀取資料，`getSheetRows` 會把整張表轉成「第一列是欄位名稱」的物件陣列
 - `.dev.vars.example`：本機測試環境變數範本（`.dev.vars` 本身已加進 `.gitignore`，不會被 commit）
 - `dashboard-single-file.js`：合併版程式碼，專門給不用終端機、直接在 Cloudflare Dashboard 網頁編輯器貼上部署用
 
-## 下一步（Phase 3-2 之後）
+## 下一步（Phase 3-3 之後）
 
-`/api/test-sheets` 只是驗收用的最小測試，之後會依照 Phase 3-2～3-5 的規劃，換成：
-- `GET /products`、`GET /campaigns`、`GET /orders` 等讀取 API
 - `POST /orders` 建立訂單（含訂單編號產生邏輯 `ORD-YYYYMMDD-XXXX`）
 - 老闆端寫入 API（改商品、改公告、改付款狀態、開關預購）
 - PIN 登入 + 短期 Token 驗證機制
