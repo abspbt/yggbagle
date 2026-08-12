@@ -3,3 +3,5 @@
 
 SPREADSHEET_ID=你的 Google Sheets 試算表 ID（網址 /d/ 和 /edit 中間那一串）
 GOOGLE_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}
+ADMIN_PIN=老闆登入用的 PIN，本機測試可以隨便填
+TOKEN_SECRET=給 Worker 簽 Token 用的一長串亂碼，本機測試可以隨便填

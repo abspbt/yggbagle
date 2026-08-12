@@ -55,6 +55,15 @@ https://docs.google.com/spreadsheets/d/【這一串就是試算表 ID】/edit
 
 把 `/d/` 和 `/edit` 中間那一串記下來，等一下要填進 Worker 設定。
 
+### 7. 決定老闆登入用的 PIN 跟簽章密鑰（Phase 3-5 新增）
+
+老闆端的寫入 API（改商品、確認付款、改公告等）現在需要先用 PIN 登入才能用。這一步要決定兩組值，等一下會跟 `SPREADSHEET_ID` 一樣，用「秘密」類型存在 Cloudflare Dashboard：
+
+- **`ADMIN_PIN`**：老闆登入用的 PIN 碼，自己想一組數字（例如 6 位數），不要用 `123456` 這種容易猜的
+- **`TOKEN_SECRET`**：給 Worker 簽 Token 用的一長串亂碼，不是密碼、老闆不需要記得，只要夠長夠亂就好。可以用 [1Password 密碼產生器](https://1password.com/password-generator) 這類線上工具產生一組 32 個字元以上的隨機字串，或請開發者用終端機跑 `openssl rand -hex 32`
+
+這兩個值只有 Worker 自己需要知道，不用寫進 Google Sheets、也不會有人看到，之後要換掉（例如 PIN 忘記或想換）直接回 Cloudflare Dashboard 改掉這個環境變數重新部署即可。
+
 ---
 
 ## 二、Worker 專案設定（開發者做，本檔案所在的 `worker/` 資料夾）
@@ -70,6 +79,8 @@ cp .dev.vars.example .dev.vars
 編輯 `.dev.vars`，填入：
 - `SPREADSHEET_ID`：上面第 6 步記下的試算表 ID
 - `GOOGLE_SERVICE_ACCOUNT_KEY`：把下載的整個 JSON 檔內容貼成**一行**（貼上前用 JSON 格式化工具轉成單行，或直接 `cat 你的檔名.json | tr -d '\n'` 產生單行字串）
+- `ADMIN_PIN`：上面第 7 步決定的登入 PIN（本機測試可以先隨便填一組，跟正式環境的值不用一樣）
+- `TOKEN_SECRET`：上面第 7 步決定的簽章密鑰（本機測試一樣可以先隨便填一組亂碼）
 
 啟動本機測試伺服器：
 
@@ -91,11 +102,22 @@ curl -X POST http://localhost:8787/orders \
 
 或用 [Postman](https://www.postman.com/) 這類圖形化工具（不用打指令，填表單即可）送出 POST 請求測試。
 
-Phase 3-4 新增的 `PATCH` endpoint（`/products/:id`、`/orders/:id`、`/settings`）也一樣要用 curl 或 Postman 測試，瀏覽器網址列沒辦法送出 `PATCH` 請求，例如：
+Phase 3-4 新增的 `PATCH` endpoint（`/products/:id`、`/orders/:id`、`/settings`）也一樣要用 curl 或 Postman 測試，瀏覽器網址列沒辦法送出 `PATCH` 請求。
+
+Phase 3-5 開始，這些老闆專用的寫入 API（`POST /products`、`PATCH /products/:id`、`PATCH /orders/:id`、`PATCH /settings`）**還要多帶一個登入拿到的 token**，不然會收到 HTTP 401。先用 PIN 換 token：
+
+```bash
+curl -X POST http://localhost:8787/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"pin":"你設定的 ADMIN_PIN"}'
+```
+
+回應會有一個 `token`，把它帶在後續請求的 `Authorization` header：
 
 ```bash
 curl -X PATCH http://localhost:8787/products/P001 \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 剛剛拿到的 token" \
   -d '{"active": false}'
 ```
 
@@ -103,15 +125,17 @@ curl -X PATCH http://localhost:8787/products/P001 \
 
 #### 方法 A：不用終端機，全部在網頁上做（推薦給不熟終端機的人）
 
-1. 打開 [Cloudflare Dashboard](https://dash.cloudflare.com/) → Workers 和 Pages → 點進你已經建立好、也設定好 `SPREADSHEET_ID` 和 `GOOGLE_SERVICE_ACCOUNT_KEY` 的那個 Worker
-2. 上方分頁切到「概觀」或「部署」，找到「編輯程式碼」（Edit code，有的介面也叫「快速編輯」Quick edit）按鈕並點進去，會打開一個網頁版的程式碼編輯器
-3. 把編輯器裡原本的預設程式碼**整個刪掉**
-4. 打開這個 repo 裡的 `worker/dashboard-single-file.js`，把整份內容複製、貼進編輯器
-5. 按右上角「部署」（Deploy / Save and deploy）
-6. 部署完，瀏覽器打開該 Worker 的網址加上 `/api/test-sheets`（Worker 網址可以在「概觀」頁複製，長得像 `https://ygg-hidden-star-9fe8.你的帳號.workers.dev`），確認看到 `{"ok":true,"values":[...]}`
-7. 也可以打開網址加上 `/products`、`/campaigns`、`/orders`，確認看到 `{"ok":true,"products":[...]}` 這類回應（如果 Sheets 裡還沒有 status 是 `active` 的檔期，`/products` 和 `/campaigns` 會回傳空陣列，這是正常的，先去 `Campaigns` 分頁把某個檔期的 `status` 改成 `active` 再測試看看）
+1. 打開 [Cloudflare Dashboard](https://dash.cloudflare.com/) → Workers 和 Pages → 點進你已經建立好的那個 Worker
+2. 「設定 → 變數與機密」確認 `SPREADSHEET_ID`、`GOOGLE_SERVICE_ACCOUNT_KEY` 都已經設定好，Phase 3-5 要再多加兩個「秘密」類型的環境變數：`ADMIN_PIN`、`TOKEN_SECRET`（值怎麼決定見上面「一、7. 決定老闆登入用的 PIN 跟簽章密鑰」）
+3. 上方分頁切到「概觀」或「部署」，找到「編輯程式碼」（Edit code，有的介面也叫「快速編輯」Quick edit）按鈕並點進去，會打開一個網頁版的程式碼編輯器
+4. 把編輯器裡原本的預設程式碼**整個刪掉**
+5. 打開這個 repo 裡的 `worker/dashboard-single-file.js`，把整份內容複製、貼進編輯器
+6. 按右上角「部署」（Deploy / Save and deploy）
+7. 部署完，瀏覽器打開該 Worker 的網址加上 `/api/test-sheets`（Worker 網址可以在「概觀」頁複製，長得像 `https://ygg-hidden-star-9fe8.你的帳號.workers.dev`），確認看到 `{"ok":true,"values":[...]}`
+8. 也可以打開網址加上 `/products`、`/campaigns`，確認看到 `{"ok":true,"products":[...]}` 這類回應（如果 Sheets 裡還沒有 status 是 `active` 的檔期，會回傳空陣列，這是正常的，先去 `Campaigns` 分頁把某個檔期的 `status` 改成 `active` 再測試看看）
+9. `/orders`（GET）跟所有老闆專用的寫入 API 從 Phase 3-5 開始都需要登入 token，瀏覽器網址列沒辦法測，要用 curl 或 Postman（見下方「PIN 登入 API」章節）
 
-之所以要用 `dashboard-single-file.js` 這份「整合版」而不是 `src/index.js`，是因為網頁版編輯器不像本機開發環境，沒辦法拆成多個檔案互相 `import`，所以把三個檔案的內容先合併成一份，貼上就能直接用。之後如果程式邏輯有改，也要記得同步更新這份檔案。
+之所以要用 `dashboard-single-file.js` 這份「整合版」而不是 `src/index.js`，是因為網頁版編輯器不像本機開發環境，沒辦法拆成多個檔案互相 `import`，所以把四個檔案的內容先合併成一份，貼上就能直接用。之後如果程式邏輯有改，也要記得同步更新這份檔案。
 
 #### 方法 B：用終端機 + wrangler 指令（開發者/之後迭代用）
 
@@ -177,6 +201,8 @@ npm run deploy
 ```
 
 ### `GET /orders`
+
+> 🔒 **這支從 Phase 3-5 開始需要登入**（訂單裡有顧客姓名電話，不能公開），要帶 `Authorization: Bearer <token>`，見下方「PIN 登入 API」。
 
 給老闆後台看的訂單列表，每張訂單帶著自己的品項明細（`Order_Items`），依 `created_at` 新到舊排序。這支目前沒有依 active 檔期過濾，回傳全部訂單。
 
@@ -264,7 +290,7 @@ npm run deploy
 
 ## 老闆端寫入 API（Phase 3-4）
 
-> ⚠️ **這四支 endpoint 目前完全沒有登入驗證，誰知道網址都能打。** PIN 登入 + 短期 Token 驗證是 Phase 3-5 的範圍，屆時會補上；在那之前不要把這些網址公開分享。
+> 🔒 **這四支 endpoint 從 Phase 3-5 開始都需要登入**，要先呼叫 `POST /auth/login` 拿 token，再帶 `Authorization: Bearer <token>` 呼叫這些 endpoint，見下方「PIN 登入 API」章節。沒帶或 token 過期會收到 HTTP 401。
 
 ### `POST /products`
 
@@ -346,15 +372,60 @@ npm run deploy
 
 - 因為是 upsert，key 打錯字不會報錯、只會在 Sheets 裡多一列新的設定，要小心拼字——盡量用上表已經有的 key，不要自己發明新的
 
+## PIN 登入 API（Phase 3-5）
+
+### `POST /auth/login`
+
+老闆輸入 PIN，換一支短期 token，之後打老闆專用的 API（`GET /orders`、`POST /products`、`PATCH /products/:id`、`PATCH /orders/:id`、`PATCH /settings`）都要帶著這支 token。
+
+```json
+{ "pin": "123456" }
+```
+
+**成功回應**：
+
+```json
+{
+  "ok": true,
+  "token": "eyJleHAiOjE3MjM0NTY3ODl9.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "expires_at": 1723456789
+}
+```
+
+- `token` 有效期 **12 小時**，過期後這些 API 會回 HTTP 401，要重新登入拿新的 token
+- `expires_at` 是到期時間（unix 秒數），前端可以用這個提早提醒老闆快過期了，或直接等收到 401 再導回登入畫面都可以
+- PIN 錯誤回 HTTP 401：`{ "ok": false, "error": "PIN 錯誤" }`
+- Worker 還沒設定 `ADMIN_PIN`／`TOKEN_SECRET` 這兩個環境變數的話會回 HTTP 500，提醒要先去 Cloudflare Dashboard 設定
+
+**呼叫需要登入的 API**，把拿到的 token 放進 `Authorization` header：
+
+```
+Authorization: Bearer eyJleHAiOjE3MjM0NTY3ODl9.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+沒帶、格式錯、或 token 過期都會收到：
+
+```json
+{ "ok": false, "error": "請先用 PIN 登入（POST /auth/login），並在 Authorization: Bearer <token> 帶上拿到的 token" }
+```
+
+（HTTP 401）
+
+### 這支 token 是怎麼運作的
+
+Token 是 Worker 自己用 `TOKEN_SECRET` 簽出來的一串「到期時間 + HMAC-SHA256 簽章」，不是存在 Google Sheets 或任何資料庫裡的 session——這樣才不用額外的 D1/KV，Worker 收到請求時純算術驗證簽章對不對、有沒有過期即可。也因為這樣，**目前沒有「登出」或「強制某支 token 失效」的功能**：token 一旦發出去，在 12 小時內都有效，直到自然過期為止。如果要提早讓某支 token 失效（例如懷疑外流），目前唯一的辦法是去 Cloudflare Dashboard 換掉 `TOKEN_SECRET` 重新部署，這樣所有舊 token（包含老闆自己手機上還沒過期的）都會一起失效，要重新登入。這個取捨對一人小商家來說夠用，先不做更複雜的機制。
+
 ## 檔案結構
 
 - `wrangler.toml`：Worker 設定（名稱、非機密環境變數）
-- `src/index.js`：Worker 進入點，包含讀取 API（`/api/test-sheets`、`/products`、`/campaigns`、`/orders` 的 GET）和寫入 API（`POST /orders`、`POST /products`、`PATCH /products/:id`、`PATCH /orders/:id`、`PATCH /settings`）
+- `src/index.js`：Worker 進入點，包含讀取 API（`/api/test-sheets`、`/products`、`/campaigns`、`/orders` 的 GET）、寫入 API（`POST /orders`、`POST /products`、`PATCH /products/:id`、`PATCH /orders/:id`、`PATCH /settings`），以及 `POST /auth/login` PIN 登入
+- `src/auth.js`：老闆登入用的短期 token 簽發與驗證（HMAC-SHA256，純 Web Crypto API，無額外套件、不需要 D1/KV）
 - `src/googleAuth.js`：用 Service Account JSON 金鑰換 Google API access token（RS256 JWT 簽章，純 Web Crypto API，無額外套件）
 - `src/sheets.js`：呼叫 Google Sheets API 讀寫資料——`getSheetRows` 把整張表轉成物件陣列、`appendRows` 附加新列、`findRowByKey` 依欄位值找到某一列、`updateRow` 覆寫指定列
 - `.dev.vars.example`：本機測試環境變數範本（`.dev.vars` 本身已加進 `.gitignore`，不會被 commit）
 - `dashboard-single-file.js`：合併版程式碼，專門給不用終端機、直接在 Cloudflare Dashboard 網頁編輯器貼上部署用
 
-## 下一步（Phase 3-5）
+## 下一步（Phase 4）
 
-- PIN 登入 + 短期 Token 驗證機制，並補到 Phase 3-4 這幾支寫入 API 上
+- 顧客預購網站前端，串接目前公開不需要登入的 `GET /products`、`GET /campaigns`、`POST /orders`
+- Phase 6 會把老闆 PWA 從假資料換成真的串接這裡的所有 API，包含 `POST /auth/login`

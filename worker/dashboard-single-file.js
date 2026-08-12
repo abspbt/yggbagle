@@ -1,5 +1,5 @@
 // 這份檔案是給「直接在 Cloudflare Dashboard 網頁編輯器貼上」用的整合版本，
-// 把 src/index.js、src/googleAuth.js、src/sheets.js 三個檔案的內容合併成一份。
+// 把 src/index.js、src/googleAuth.js、src/sheets.js、src/auth.js 四個檔案的內容合併成一份。
 // 開發時請改 src/ 底下的檔案；這份檔案只在改動後手動同步、貼到 Dashboard。
 
 // ---- 以下對應 src/googleAuth.js ----
@@ -200,17 +200,89 @@ async function findRowByKey(accessToken, spreadsheetId, sheetName, keyColumn, ke
   return null;
 }
 
+// ---- 以下對應 src/auth.js ----
+
+// 老闆登入用的短期 Token：HMAC-SHA256 簽章，純 Web Crypto API，不需要額外套件、
+// 不需要 D1/KV 存 session（Token 本身帶著到期時間，Worker 只需要驗簽章 + 檢查有沒有過期）。
+// Token 格式：base64url(JSON payload).base64url(HMAC 簽章)，payload 只放到期時間 exp。
+
+const TOKEN_TTL_SECONDS = 60 * 60 * 12; // 12 小時，過期要重新用 PIN 登入
+
+function tokenBase64url(bytes) {
+  let str = "";
+  for (const b of bytes) str += String.fromCharCode(b);
+  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function tokenBase64urlToBytes(str) {
+  const padded = str.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (str.length % 4)) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function importHmacKey(secret, usages) {
+  return crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    usages
+  );
+}
+
+// PIN 驗證成功後呼叫，回傳新 token 跟到期時間（unix 秒數）。
+async function signToken(secret) {
+  const payload = { exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS };
+  const payloadPart = tokenBase64url(new TextEncoder().encode(JSON.stringify(payload)));
+
+  const key = await importHmacKey(secret, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payloadPart));
+
+  return { token: `${payloadPart}.${tokenBase64url(new Uint8Array(signature))}`, expiresAt: payload.exp };
+}
+
+// 驗證某支寫入 API 帶來的 token 是否有效（簽章正確且還沒過期）。
+async function verifyToken(token, secret) {
+  if (typeof token !== "string") return false;
+
+  const parts = token.split(".");
+  if (parts.length !== 2) return false;
+  const [payloadPart, signaturePart] = parts;
+
+  let valid;
+  try {
+    const key = await importHmacKey(secret, ["verify"]);
+    valid = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      tokenBase64urlToBytes(signaturePart),
+      new TextEncoder().encode(payloadPart)
+    );
+  } catch {
+    return false;
+  }
+  if (!valid) return false;
+
+  let payload;
+  try {
+    payload = JSON.parse(new TextDecoder().decode(tokenBase64urlToBytes(payloadPart)));
+  } catch {
+    return false;
+  }
+
+  return typeof payload.exp === "number" && payload.exp > Math.floor(Date.now() / 1000);
+}
+
 // ---- 以下對應 src/index.js ----
 
 // 顧客網站（Phase 4）跟老闆 PWA（Phase 6）會從不同網域打這個 Worker，開放 CORS。
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
-
-// ⚠️ Phase 3-4 的老闆端寫入 API 目前還沒有任何登入驗證——誰都能打這些 endpoint。
-// PIN 登入 + 短期 Token 驗證是 Phase 3-5 的範圍，屆時要幫這些 endpoint 加上驗證。
 
 function json(data, init = {}) {
   return Response.json(data, {
@@ -238,6 +310,56 @@ async function getAuthedContext(env) {
   const serviceAccount = JSON.parse(env.GOOGLE_SERVICE_ACCOUNT_KEY);
   const accessToken = await getAccessToken(serviceAccount);
   return { accessToken, spreadsheetId: env.SPREADSHEET_ID };
+}
+
+// POST /auth/login：老闆輸入 PIN 換一支短期 Token（12 小時），之後老闆端的寫入 API
+// 都要在 Authorization: Bearer <token> header 帶這支 token 才能呼叫。
+// PIN（`ADMIN_PIN`）跟簽章用的密鑰（`TOKEN_SECRET`）都是 Cloudflare Dashboard 的「秘密」
+// 環境變數，做法比照 Phase 3-1 的 SPREADSHEET_ID / GOOGLE_SERVICE_ACCOUNT_KEY，不寫進 repo。
+async function handleLogin(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "請求格式錯誤，需要 JSON" }, { status: 400 });
+  }
+
+  const pin = body && body.pin;
+  if (!pin || typeof pin !== "string") {
+    return json({ ok: false, error: "缺少必要欄位（pin）" }, { status: 400 });
+  }
+
+  if (!env.ADMIN_PIN || !env.TOKEN_SECRET) {
+    return json(
+      { ok: false, error: "伺服器尚未設定 ADMIN_PIN / TOKEN_SECRET，請先在 Cloudflare Dashboard 設定" },
+      { status: 500 }
+    );
+  }
+
+  if (pin !== env.ADMIN_PIN) {
+    return json({ ok: false, error: "PIN 錯誤" }, { status: 401 });
+  }
+
+  const { token, expiresAt } = await signToken(env.TOKEN_SECRET);
+  return json({ ok: true, token, expires_at: expiresAt });
+}
+
+// 檢查請求是否帶著有效、還沒過期的 token（Authorization: Bearer <token>）。
+async function isAuthorized(request, env) {
+  if (!env.TOKEN_SECRET) return false;
+
+  const header = request.headers.get("Authorization") || "";
+  const match = header.match(/^Bearer (.+)$/);
+  if (!match) return false;
+
+  return verifyToken(match[1], env.TOKEN_SECRET);
+}
+
+function unauthorized() {
+  return json(
+    { ok: false, error: "請先用 PIN 登入（POST /auth/login），並在 Authorization: Bearer <token> 帶上拿到的 token" },
+    { status: 401 }
+  );
 }
 
 // 台北時區的日期（給訂單編號用）跟 ISO 格式時間（給 created_at 用）。
@@ -741,25 +863,35 @@ export default {
     }
 
     try {
+      if (url.pathname === "/auth/login" && request.method === "POST") {
+        return await handleLogin(request, env);
+      }
+
+      // 顧客下單，公開不需要登入。
       if (url.pathname === "/orders" && request.method === "POST") {
         return await handleCreateOrder(request, env);
       }
 
+      // 以下都是老闆專用的寫入 API，要先用 PIN 登入換到有效的 token 才能呼叫。
       const orderMatch = url.pathname.match(/^\/orders\/([^/]+)$/);
       if (orderMatch && request.method === "PATCH") {
+        if (!(await isAuthorized(request, env))) return unauthorized();
         return await handleUpdateOrder(request, env, decodeURIComponent(orderMatch[1]));
       }
 
       if (url.pathname === "/products" && request.method === "POST") {
+        if (!(await isAuthorized(request, env))) return unauthorized();
         return await handleCreateProduct(request, env);
       }
 
       const productMatch = url.pathname.match(/^\/products\/([^/]+)$/);
       if (productMatch && request.method === "PATCH") {
+        if (!(await isAuthorized(request, env))) return unauthorized();
         return await handleUpdateProduct(request, env, decodeURIComponent(productMatch[1]));
       }
 
       if (url.pathname === "/settings" && request.method === "PATCH") {
+        if (!(await isAuthorized(request, env))) return unauthorized();
         return await handleUpdateSettings(request, env);
       }
 
@@ -774,9 +906,15 @@ export default {
         return json({ ok: true, values });
       }
 
+      // 顧客網站要讀的商品/檔期資訊，公開不需要登入。
       if (url.pathname === "/products") return await handleProducts(env);
       if (url.pathname === "/campaigns") return await handleCampaigns(env);
-      if (url.pathname === "/orders") return await handleOrders(env);
+
+      // 訂單列表含顧客姓名電話，只有老闆能看，需要登入。
+      if (url.pathname === "/orders") {
+        if (!(await isAuthorized(request, env))) return unauthorized();
+        return await handleOrders(env);
+      }
 
       return json({ ok: false, error: "Not found" }, { status: 404 });
     } catch (err) {

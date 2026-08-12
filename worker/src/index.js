@@ -1,15 +1,13 @@
 import { getAccessToken } from "./googleAuth.js";
 import { getValues, getSheetRows, appendRows, findRowByKey, updateRow } from "./sheets.js";
+import { signToken, verifyToken } from "./auth.js";
 
 // 顧客網站（Phase 4）跟老闆 PWA（Phase 6）會從不同網域打這個 Worker，開放 CORS。
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
-
-// ⚠️ Phase 3-4 的老闆端寫入 API 目前還沒有任何登入驗證——誰都能打這些 endpoint。
-// PIN 登入 + 短期 Token 驗證是 Phase 3-5 的範圍，屆時要幫這些 endpoint 加上驗證。
 
 function json(data, init = {}) {
   return Response.json(data, {
@@ -37,6 +35,56 @@ async function getAuthedContext(env) {
   const serviceAccount = JSON.parse(env.GOOGLE_SERVICE_ACCOUNT_KEY);
   const accessToken = await getAccessToken(serviceAccount);
   return { accessToken, spreadsheetId: env.SPREADSHEET_ID };
+}
+
+// POST /auth/login：老闆輸入 PIN 換一支短期 Token（12 小時），之後老闆端的寫入 API
+// 都要在 Authorization: Bearer <token> header 帶這支 token 才能呼叫。
+// PIN（`ADMIN_PIN`）跟簽章用的密鑰（`TOKEN_SECRET`）都是 Cloudflare Dashboard 的「秘密」
+// 環境變數，做法比照 Phase 3-1 的 SPREADSHEET_ID / GOOGLE_SERVICE_ACCOUNT_KEY，不寫進 repo。
+async function handleLogin(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "請求格式錯誤，需要 JSON" }, { status: 400 });
+  }
+
+  const pin = body && body.pin;
+  if (!pin || typeof pin !== "string") {
+    return json({ ok: false, error: "缺少必要欄位（pin）" }, { status: 400 });
+  }
+
+  if (!env.ADMIN_PIN || !env.TOKEN_SECRET) {
+    return json(
+      { ok: false, error: "伺服器尚未設定 ADMIN_PIN / TOKEN_SECRET，請先在 Cloudflare Dashboard 設定" },
+      { status: 500 }
+    );
+  }
+
+  if (pin !== env.ADMIN_PIN) {
+    return json({ ok: false, error: "PIN 錯誤" }, { status: 401 });
+  }
+
+  const { token, expiresAt } = await signToken(env.TOKEN_SECRET);
+  return json({ ok: true, token, expires_at: expiresAt });
+}
+
+// 檢查請求是否帶著有效、還沒過期的 token（Authorization: Bearer <token>）。
+async function isAuthorized(request, env) {
+  if (!env.TOKEN_SECRET) return false;
+
+  const header = request.headers.get("Authorization") || "";
+  const match = header.match(/^Bearer (.+)$/);
+  if (!match) return false;
+
+  return verifyToken(match[1], env.TOKEN_SECRET);
+}
+
+function unauthorized() {
+  return json(
+    { ok: false, error: "請先用 PIN 登入（POST /auth/login），並在 Authorization: Bearer <token> 帶上拿到的 token" },
+    { status: 401 }
+  );
 }
 
 // 台北時區的日期（給訂單編號用）跟 ISO 格式時間（給 created_at 用）。
@@ -540,25 +588,35 @@ export default {
     }
 
     try {
+      if (url.pathname === "/auth/login" && request.method === "POST") {
+        return await handleLogin(request, env);
+      }
+
+      // 顧客下單，公開不需要登入。
       if (url.pathname === "/orders" && request.method === "POST") {
         return await handleCreateOrder(request, env);
       }
 
+      // 以下都是老闆專用的寫入 API，要先用 PIN 登入換到有效的 token 才能呼叫。
       const orderMatch = url.pathname.match(/^\/orders\/([^/]+)$/);
       if (orderMatch && request.method === "PATCH") {
+        if (!(await isAuthorized(request, env))) return unauthorized();
         return await handleUpdateOrder(request, env, decodeURIComponent(orderMatch[1]));
       }
 
       if (url.pathname === "/products" && request.method === "POST") {
+        if (!(await isAuthorized(request, env))) return unauthorized();
         return await handleCreateProduct(request, env);
       }
 
       const productMatch = url.pathname.match(/^\/products\/([^/]+)$/);
       if (productMatch && request.method === "PATCH") {
+        if (!(await isAuthorized(request, env))) return unauthorized();
         return await handleUpdateProduct(request, env, decodeURIComponent(productMatch[1]));
       }
 
       if (url.pathname === "/settings" && request.method === "PATCH") {
+        if (!(await isAuthorized(request, env))) return unauthorized();
         return await handleUpdateSettings(request, env);
       }
 
@@ -573,9 +631,15 @@ export default {
         return json({ ok: true, values });
       }
 
+      // 顧客網站要讀的商品/檔期資訊，公開不需要登入。
       if (url.pathname === "/products") return await handleProducts(env);
       if (url.pathname === "/campaigns") return await handleCampaigns(env);
-      if (url.pathname === "/orders") return await handleOrders(env);
+
+      // 訂單列表含顧客姓名電話，只有老闆能看，需要登入。
+      if (url.pathname === "/orders") {
+        if (!(await isAuthorized(request, env))) return unauthorized();
+        return await handleOrders(env);
+      }
 
       return json({ ok: false, error: "Not found" }, { status: 404 });
     } catch (err) {

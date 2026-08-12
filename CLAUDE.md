@@ -9,7 +9,8 @@
 - ✅ Phase 3-2：讀取 API（已完成，見下方備註）
 - ✅ Phase 3-3：寫入 API（已完成，見下方備註）
 - ✅ Phase 3-4：老闆端寫入 API（已完成，見下方備註）
-- ⏭️ 下一步：Phase 3-5（PIN 登入 + 短期 Token 驗證機制）
+- ✅ Phase 3-5：PIN 登入 + 短期 Token 驗證機制（已完成，見下方備註，**Phase 3 全部完成**）
+- ⏭️ 下一步：Phase 4（顧客預購網站前端，串接 Phase 3 的 API）
 
 **Phase 3-1 備註**：
 - 已建立 Google Cloud Service Account，金鑰以「秘密」類型設定在 Cloudflare Dashboard 的 Worker 環境變數（`SPREADSHEET_ID`、`GOOGLE_SERVICE_ACCOUNT_KEY`），沒有寫進程式碼或 repo
@@ -40,6 +41,16 @@
 - `Settings` 分頁實際欄位是 `setting_key`/`setting_value`（不是原本猜的 `key`/`value`，已經跟老闆核對過 Sheets 實際內容修正），已有的 key 清單（`shop_name`、`shop_intro`、`shop_line`、`shop_phone`、`shop_address`、`bank_name`、`bank_account`、`bank_owner`、`announcement_text`、`announcement_visible`、`preorder_open`、`pause_message`）列在 `worker/README.md`
 - `worker/src/sheets.js` 新增 `findRowByKey()`（依欄位值找到某一列）、`updateRow()`（覆寫指定列）兩個輔助函式
 - API 細節、請求/回應範例、curl/Postman 測試方法見 `worker/README.md`
+
+**Phase 3-5 備註**：
+- 新增 `POST /auth/login`：老闆輸入 PIN 換一支短期 token（有效 12 小時），HMAC-SHA256 簽章，不用 D1/KV 存 session——token 本身帶著到期時間，Worker 只要驗簽章+檢查有沒有過期
+- 新增兩個 Cloudflare 秘密環境變數：`ADMIN_PIN`（登入 PIN）、`TOKEN_SECRET`（簽章密鑰），做法比照 `SPREADSHEET_ID`，不寫進 repo
+- 上鎖的 endpoint：`GET /orders`（含顧客個資）、`POST /products`、`PATCH /products/:id`、`PATCH /orders/:id`、`PATCH /settings`，都要帶 `Authorization: Bearer <token>`，沒帶/過期回 HTTP 401
+- 保持公開（顧客前台之後要用）：`GET /products`、`GET /campaigns`、`POST /orders`
+- **目前沒有登出／強制某支 token 失效的機制**，token 一旦發出去 12 小時內都有效；要提早讓所有 token 失效只能去 Cloudflare Dashboard 換掉 `TOKEN_SECRET` 重新部署（這樣連老闆自己手機上還沒過期的 token 也會一起失效，要重新登入）——這個取捨對一人小商家先夠用
+- 新增 `worker/src/auth.js` 模組，內部的 base64url 輔助函式改名成 `tokenBase64url`/`tokenBase64urlToBytes`，避免跟 `googleAuth.js` 的同名函式在 `dashboard-single-file.js` 合併時撞名
+- API 細節、登入流程、token 運作方式見 `worker/README.md`
+- **Phase 3（Cloudflare Worker API）到這裡全部做完**：3-1 授權設定、3-2 讀取 API、3-3 顧客下單寫入、3-4 老闆端寫入、3-5 PIN 登入驗證
 
 Phase 0 各頁 Wireframe 定案內容已整理成交接摘要，見對話紀錄
 （今日 Dashboard、商品管理、訂單列表+付款確認、公告設定、
