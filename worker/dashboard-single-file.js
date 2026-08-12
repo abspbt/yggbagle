@@ -404,8 +404,8 @@ function generateOrderId(existingOrders, dateCompact) {
 }
 
 // POST /orders：顧客下單，商品單價一律以 Sheets 上的 Products 資料為準，不採信前端傳來的價格。
-// 這裡只驗證「檔期是否開放、時段是否屬於這個檔期、單一商品是否超過 max_per_order」，
-// 檔期/時段的總量上限檢查留給 Phase 5 處理。
+// 驗證項目：檔期是否開放、時段是否屬於這個檔期、單一商品是否超過 max_per_order、
+// 檔期總量（Campaigns.total_quantity_cap）是否還有餘量。
 async function handleCreateOrder(request, env) {
   let body;
   try {
@@ -428,11 +428,12 @@ async function handleCreateOrder(request, env) {
 
   const { accessToken, spreadsheetId } = await getAuthedContext(env);
 
-  const [campaigns, slots, products, existingOrders] = await Promise.all([
+  const [campaigns, slots, products, existingOrders, existingOrderItems] = await Promise.all([
     getSheetRows(accessToken, spreadsheetId, "Campaigns"),
     getSheetRows(accessToken, spreadsheetId, "PickupSlots"),
     getSheetRows(accessToken, spreadsheetId, "Products"),
     getSheetRows(accessToken, spreadsheetId, "Orders"),
+    getSheetRows(accessToken, spreadsheetId, "Order_Items"),
   ]);
 
   const campaign = campaigns.find((c) => c.campaign_id === campaign_id);
@@ -472,6 +473,34 @@ async function handleCreateOrder(request, env) {
       quantity,
       subtotal: unitPrice * quantity,
     });
+  }
+
+  const requestedQuantity = orderItems.reduce((sum, item) => sum + item.quantity, 0);
+  const quantityCap = toNumber(campaign.total_quantity_cap);
+  if (quantityCap > 0) {
+    const countedOrderIds = new Set(
+      existingOrders
+        .filter((o) => o.campaign_id === campaign_id && o.order_status !== "cancelled")
+        .map((o) => o.order_id)
+    );
+    const alreadyOrdered = existingOrderItems.reduce(
+      (sum, item) => (countedOrderIds.has(item.order_id) ? sum + toNumber(item.quantity) : sum),
+      0
+    );
+
+    if (alreadyOrdered + requestedQuantity > quantityCap) {
+      const remaining = Math.max(0, quantityCap - alreadyOrdered);
+      return json(
+        {
+          ok: false,
+          error:
+            remaining > 0
+              ? `本檔期預購已達上限，剩餘 ${remaining} 份，訂單需求 ${requestedQuantity} 份，請減少數量後再試`
+              : "本檔期預購已額滿，請等待下一檔期",
+        },
+        { status: 400 }
+      );
+    }
   }
 
   const total = orderItems.reduce((sum, item) => sum + item.subtotal, 0);
