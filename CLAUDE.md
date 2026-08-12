@@ -10,7 +10,8 @@
 - ✅ Phase 3-3：寫入 API（已完成，見下方備註）
 - ✅ Phase 3-4：老闆端寫入 API（已完成，見下方備註）
 - ✅ Phase 3-5：PIN 登入 + 短期 Token 驗證機制（已完成，見下方備註，**Phase 3 全部完成**）
-- ⏭️ 下一步：Phase 4（顧客預購網站前端，串接 Phase 3 的 API）
+- ✅ Phase 4：顧客預購網站前端（已完成，見下方備註）
+- ⏭️ 下一步：Phase 5（預購總量上限控制邏輯）
 
 **Phase 3-1 備註**：
 - 已建立 Google Cloud Service Account，金鑰以「秘密」類型設定在 Cloudflare Dashboard 的 Worker 環境變數（`SPREADSHEET_ID`、`GOOGLE_SERVICE_ACCOUNT_KEY`），沒有寫進程式碼或 repo
@@ -51,6 +52,14 @@
 - 新增 `worker/src/auth.js` 模組，內部的 base64url 輔助函式改名成 `tokenBase64url`/`tokenBase64urlToBytes`，避免跟 `googleAuth.js` 的同名函式在 `dashboard-single-file.js` 合併時撞名
 - API 細節、登入流程、token 運作方式見 `worker/README.md`
 - **Phase 3（Cloudflare Worker API）到這裡全部做完**：3-1 授權設定、3-2 讀取 API、3-3 顧客下單寫入、3-4 老闆端寫入、3-5 PIN 登入驗證
+
+**Phase 4 備註**：
+- 新增 `site/` 目錄：純前端單頁式顧客預購網站（無框架、無建置流程），流程為 公告 → 選商品（含數量選擇器）→ 選取貨時段 → 填姓名電話 → 確認訂單摘要 → 送出 → 顯示訂單編號 + 匯款資訊 + LINE 連結
+- 只串接公開 API：`GET /campaigns`、`GET /products`、`POST /orders`，不需要登入
+- 開發過程中發現 Worker 少一支公開的 `GET /settings`（顧客網站要讀公告、匯款資訊、預購開關才需要），已補上這支（`worker/src/index.js`、`worker/dashboard-single-file.js`、`worker/README.md` 同步更新），已部署並實測正常
+- 順手修了一個小 bug：Worker 的 JSON 回應沒有明確標註 `charset=utf-8`，導致直接用瀏覽器打開 API 網址時 Safari 會把中文顯示成亂碼（用程式串接不受影響），已修正
+- 已在本機用瀏覽器打開 `site/index.html` 實際測試過完整下單流程，操作順暢
+- 目前還沒部署到 Cloudflare Pages，正式上線的網域設定留給 Phase 7；畫面/文字之後想再調整，隨時都可以，不用等整個專案做完
 
 Phase 0 各頁 Wireframe 定案內容已整理成交接摘要，見對話紀錄
 （今日 Dashboard、商品管理、訂單列表+付款確認、公告設定、
@@ -98,6 +107,7 @@ Phase 0 各頁 Wireframe 定案內容已整理成交接摘要，見對話紀錄
   **主動提醒我**：「這個階段完成了，要不要更新 CLAUDE.md 的『目前進度』？」
 - 不要自己直接改，先問過我內容要寫什麼再更新。
 - 如果我確認要改，把「目前進度」欄位更新成完成了什麼、下一步要做什麼。
+- **一律使用中文回應**，不要用英文。
 
 ---
 
@@ -229,9 +239,10 @@ Worker 程式碼位置：[GitHub repo 連結]
 **開始前準備**：Phase 3 交接摘要（API 清單）
 
 **產出**：
-- [ ] 公告 → 選商品 → 選數量/口味 → 選取貨日期/時段 → 填姓名電話 → 送出訂單 → 顯示訂單編號 + 匯款資訊 → 前往 LINE / 複製訂單編號
+- [x] 公告 → 選商品 → 選數量/口味 → 選取貨日期/時段 → 填姓名電話 → 送出訂單 → 顯示訂單編號 + 匯款資訊 → 前往 LINE / 複製訂單編號
 
 **驗收標準**：從真實手機瀏覽器（iPhone Safari）走完整個下單流程，訂單真的寫進 Google Sheets。
+（目前只在電腦瀏覽器上本機測試過完整流程，訂單有真的寫進 Google Sheets；還沒用真實 iPhone Safari 測過，之後找時間補測。）
 
 **▶ 交接摘要範本**：
 ```
