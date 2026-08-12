@@ -81,6 +81,16 @@ npm run dev
 
 也可以打開 `http://localhost:8787/products`、`/campaigns`、`/orders` 測試 Phase 3-2 新增的讀取 API（見下方「讀取 API」章節）。
 
+`POST /orders`（Phase 3-3 新增的建立訂單 API，見下方「寫入 API」章節）沒辦法用瀏覽器網址列直接測試，因為瀏覽器打開網址預設是 `GET`。開發時可以用終端機：
+
+```bash
+curl -X POST http://localhost:8787/orders \
+  -H "Content-Type: application/json" \
+  -d '{"campaign_id":"C001","customer_name":"測試","customer_phone":"0912345678","pickup_slot_id":"S001","items":[{"product_id":"P001","quantity":1}]}'
+```
+
+或用 [Postman](https://www.postman.com/) 這類圖形化工具（不用打指令，填表單即可）送出 POST 請求測試。
+
 ### 部署到 Cloudflare（正式環境）
 
 #### 方法 A：不用終端機，全部在網頁上做（推薦給不熟終端機的人）
@@ -185,17 +195,75 @@ npm run deploy
 }
 ```
 
+## 寫入 API（Phase 3-3）
+
+### `POST /orders`
+
+顧客下單用，建立一筆訂單（同時寫入 `Orders` 和 `Order_Items` 兩張表）。
+
+**請求範例**：
+
+```json
+{
+  "campaign_id": "C001",
+  "customer_name": "王小明",
+  "customer_phone": "0912345678",
+  "pickup_slot_id": "S001",
+  "note": "麻煩切半",
+  "items": [
+    { "product_id": "P001", "quantity": 2 },
+    { "product_id": "P002", "quantity": 1 }
+  ]
+}
+```
+
+- `campaign_id`、`customer_name`、`customer_phone`、`pickup_slot_id`、`items` 為必填，`items` 至少要有一筆，`note` 可省略
+- 商品單價一律以 Sheets 上 `Products` 分頁當下的資料為準，**不採信前端傳來的價格**，避免被竄改
+- 會檢查：檔期是否為 `active`、取貨時段是否屬於這個檔期、商品是否存在／上架、單一商品數量是否超過該商品的 `max_per_order`
+- **檔期/時段的總量上限（`total_quantity_cap`）檢查是 Phase 5 的範圍，這支目前不會擋**，超賣風險留到 Phase 5 處理
+- 訂單編號格式 `ORD-YYYYMMDD-XXXX`（西元年月日 + 當天流水號，從 `0001` 開始），日期以台北時區計算
+- 這是簡單的「讀了再寫」（讀 `Orders` 找當天最大流水號 +1），不是原子操作——極端情況下（幾乎同時送出兩張訂單）理論上有極低機率撞號，跟 Phase 5 的總量控制走一樣的取捨（老闆手動處理即可），不做額外的鎖
+
+**成功回應**（HTTP 201）：
+
+```json
+{
+  "ok": true,
+  "order": {
+    "order_id": "ORD-20260812-0001",
+    "campaign_id": "C001",
+    "created_at": "2026-08-12T14:05:00+08:00",
+    "customer_name": "王小明",
+    "customer_phone": "0912345678",
+    "pickup_slot_id": "S001",
+    "total": 135,
+    "payment_status": "pending",
+    "order_status": "new",
+    "note": "麻煩切半",
+    "items": [
+      { "product_id": "P001", "product_name": "原味貝果（無餡）", "unit_price": 45, "quantity": 2, "subtotal": 90 },
+      { "product_id": "P002", "product_name": "巧克力貝果（有餡）", "unit_price": 45, "quantity": 1, "subtotal": 45 }
+    ]
+  }
+}
+```
+
+**失敗回應**（HTTP 400，例如檔期未開放、商品已下架、超過 `max_per_order` 等）：
+
+```json
+{ "ok": false, "error": "此檔期目前未開放預購" }
+```
+
 ## 檔案結構
 
 - `wrangler.toml`：Worker 設定（名稱、非機密環境變數）
-- `src/index.js`：Worker 進入點，包含 `/api/test-sheets` 測試 endpoint 和 `/products`、`/campaigns`、`/orders` 讀取 API
+- `src/index.js`：Worker 進入點，包含 `/api/test-sheets` 測試 endpoint、`/products`、`/campaigns`、`/orders`（GET）讀取 API，以及 `/orders`（POST）建立訂單 API
 - `src/googleAuth.js`：用 Service Account JSON 金鑰換 Google API access token（RS256 JWT 簽章，純 Web Crypto API，無額外套件）
-- `src/sheets.js`：呼叫 Google Sheets API 讀取資料，`getSheetRows` 會把整張表轉成「第一列是欄位名稱」的物件陣列
+- `src/sheets.js`：呼叫 Google Sheets API 讀寫資料，`getSheetRows` 把整張表轉成「第一列是欄位名稱」的物件陣列，`appendRows` 把資料列附加到某張表最後面
 - `.dev.vars.example`：本機測試環境變數範本（`.dev.vars` 本身已加進 `.gitignore`，不會被 commit）
 - `dashboard-single-file.js`：合併版程式碼，專門給不用終端機、直接在 Cloudflare Dashboard 網頁編輯器貼上部署用
 
-## 下一步（Phase 3-3 之後）
+## 下一步（Phase 3-4 之後）
 
-- `POST /orders` 建立訂單（含訂單編號產生邏輯 `ORD-YYYYMMDD-XXXX`）
 - 老闆端寫入 API（改商品、改公告、改付款狀態、開關預購）
 - PIN 登入 + 短期 Token 驗證機制

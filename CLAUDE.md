@@ -7,7 +7,8 @@
 - ✅ Phase 2：Google Sheets 資料表設計（已完成，表已建到 Google 雲端空間）
 - ✅ Phase 3-1：Worker 專案初始化 + Google Sheets API 授權設定（已完成，見下方備註）
 - ✅ Phase 3-2：讀取 API（已完成，見下方備註）
-- ⏭️ 下一步：Phase 3-3（寫入 API：POST 建立訂單，含訂單編號產生邏輯 `ORD-YYYYMMDD-XXXX`）
+- ✅ Phase 3-3：寫入 API（已完成，見下方備註）
+- ⏭️ 下一步：Phase 3-4（老闆端寫入 API：改商品、改公告、改付款狀態、開關預購）
 
 **Phase 3-1 備註**：
 - 已建立 Google Cloud Service Account，金鑰以「秘密」類型設定在 Cloudflare Dashboard 的 Worker 環境變數（`SPREADSHEET_ID`、`GOOGLE_SERVICE_ACCOUNT_KEY`），沒有寫進程式碼或 repo
@@ -23,6 +24,14 @@
 - 加了 CORS header，因為之後 Phase 4/6 前端會從別的網域打這個 Worker
 - `worker/dashboard-single-file.js` 已同步更新，API 細節與範例回應格式見 `worker/README.md`
 - 開發這次時發現 Phase 3-1 分支當時還沒併入 main，已在 `claude/phase-3-2-api-read-0rkozk` 分支裡先合併進來——**併 PR 時要注意，如果 Phase 3-1 有獨立的 PR 還沒關掉，這邊會重複收錄**
+
+**Phase 3-3 備註**：
+- 新增 `POST /orders`：顧客下單，同時寫入 `Orders` + `Order_Items` 兩張表
+- 商品單價一律以 Sheets 上 `Products` 分頁當下資料為準，不採信前端傳來的價格，避免被竄改
+- 會檢查檔期是否 active、取貨時段是否屬於該檔期、單一商品是否超過 `max_per_order`；**檔期/時段總量上限（`total_quantity_cap`）的檢查刻意留給 Phase 5**，這支目前不會擋超賣
+- 訂單編號格式 `ORD-YYYYMMDD-XXXX`（台北時區日期 + 當天流水號），用「讀了再寫」算下一個流水號，不做原子鎖——跟 Phase 5 總量控制走一樣的取捨（極端情況下可能撞號，機率很低，先接受這個風險，之後真的常常發生的話再回頭處理）
+- `worker/src/sheets.js` 新增 `appendRows()` 寫入輔助函式
+- API 細節、請求/回應範例、curl 測試方法見 `worker/README.md`
 
 Phase 0 各頁 Wireframe 定案內容已整理成交接摘要，見對話紀錄
 （今日 Dashboard、商品管理、訂單列表+付款確認、公告設定、
