@@ -11,7 +11,8 @@
 - ✅ Phase 3-4：老闆端寫入 API（已完成，見下方備註）
 - ✅ Phase 3-5：PIN 登入 + 短期 Token 驗證機制（已完成，見下方備註，**Phase 3 全部完成**）
 - ✅ Phase 4：顧客預購網站前端（已完成，見下方備註）
-- ⏭️ 下一步：Phase 5（預購總量上限控制邏輯）
+- ✅ Phase 5：預購總量上限控制邏輯（已完成，見下方備註）
+- ⏭️ 下一步：Phase 6（PWA 串接真實 API）
 
 **Phase 3-1 備註**：
 - 已建立 Google Cloud Service Account，金鑰以「秘密」類型設定在 Cloudflare Dashboard 的 Worker 環境變數（`SPREADSHEET_ID`、`GOOGLE_SERVICE_ACCOUNT_KEY`），沒有寫進程式碼或 repo
@@ -60,6 +61,15 @@
 - 順手修了一個小 bug：Worker 的 JSON 回應沒有明確標註 `charset=utf-8`，導致直接用瀏覽器打開 API 網址時 Safari 會把中文顯示成亂碼（用程式串接不受影響），已修正
 - 已在本機用瀏覽器打開 `site/index.html` 實際測試過完整下單流程，操作順暢
 - 目前還沒部署到 Cloudflare Pages，正式上線的網域設定留給 Phase 7；畫面/文字之後想再調整，隨時都可以，不用等整個專案做完
+
+**Phase 5 備註**：
+- `POST /orders` 新增檔期總量檢查：把該檔期所有「未取消」訂單的 `Order_Items` 數量加總，加上這筆新訂單要訂的數量，超過 `Campaigns.total_quantity_cap` 就擋下，回傳 HTTP 400（例如「本檔期預購已達上限，剩餘 3 份，訂單需求 5 份，請減少數量後再試」；剩餘 0 份時顯示「本檔期預購已額滿，請等待下一檔期」）
+- `total_quantity_cap` 為 0 或空白代表不限制，不會做這項檢查
+- 目前是「整個檔期共用一個上限」，不是每個取貨時段各自獨立算（`PickupSlots` 表沒有各時段自己的上限欄位），跟原本大綱寫的「檔期/時段總量上限」有些出入，以實際的 Google Sheets 資料表結構（Phase 2 定案）為準
+- 沿用 Phase 3-3 訂單編號流水號一樣的取捨：「讀了再寫」的簡單檢查，不做原子鎖，極端情況下可能多接一兩份，老闆手動調整即可
+- 前端 `site/js/app.js` 不用改，本來就會把 API 回傳的 `error` 訊息直接顯示在送出按鈕下方
+- `worker/src/index.js`、`worker/dashboard-single-file.js`、`worker/README.md` 都已同步更新，已透過 Cloudflare Dashboard 網頁編輯器部署並併入 `main`（PR #12，同時併入了原本卡著沒併的 Phase 4）
+- 開發時發現 Phase 4 的分支 `claude/new-session-r689do` 當時還沒併入 `main`，這次 Phase 5 分支是接在 Phase 4 分支上做的，PR #12 一次把 Phase 4 + Phase 5 都併進 `main` 了
 
 Phase 0 各頁 Wireframe 定案內容已整理成交接摘要，見對話紀錄
 （今日 Dashboard、商品管理、訂單列表+付款確認、公告設定、
@@ -261,9 +271,9 @@ Worker 程式碼位置：[GitHub repo 連結]
 **開始前準備**：Phase 4 交接摘要
 
 **產出**：
-- [ ] 送出訂單前檢查 `total_quantity_cap` 是否還有餘量
-- [ ] 超過上限時前台顯示「本時段/本檔期已額滿」
-- [ ] 這裡不用做原子鎖，簡單的 read-then-write 檢查即可（極端情況下多接一兩張訂單，老闆手動調整即可）
+- [x] 送出訂單前檢查 `total_quantity_cap` 是否還有餘量
+- [x] 超過上限時前台顯示「本時段/本檔期已額滿」
+- [x] 這裡不用做原子鎖，簡單的 read-then-write 檢查即可（極端情況下多接一兩張訂單，老闆手動調整即可）
 
 **驗收標準**：手動把上限設低（例如設 2），測試第 3 筆訂單會被擋下。
 
