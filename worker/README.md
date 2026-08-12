@@ -81,16 +81,25 @@ npm run dev
 
 ### 部署到 Cloudflare（正式環境）
 
-如果你已經在 Cloudflare Dashboard 的「Workers 和 Pages → 你的 Worker → 設定 → 變數與機密」手動新增過 `SPREADSHEET_ID` 和 `GOOGLE_SERVICE_ACCOUNT_KEY`（都設成「秘密」類型），這步就不用再用指令重複設定，`wrangler.toml` 也刻意沒有宣告這兩個變數，避免部署時把 Dashboard 上設定好的值覆蓋掉。
+#### 方法 A：不用終端機，全部在網頁上做（推薦給不熟終端機的人）
 
-`wrangler.toml` 的 `name` 要跟 Dashboard 上這個 Worker 的名字完全一致（例如 `ygg-hidden-star-9fe8`），部署才會部署到「同一個」已經設好機密的 Worker，而不是另外建一個新的。
+1. 打開 [Cloudflare Dashboard](https://dash.cloudflare.com/) → Workers 和 Pages → 點進你已經建立好、也設定好 `SPREADSHEET_ID` 和 `GOOGLE_SERVICE_ACCOUNT_KEY` 的那個 Worker
+2. 上方分頁切到「概觀」或「部署」，找到「編輯程式碼」（Edit code，有的介面也叫「快速編輯」Quick edit）按鈕並點進去，會打開一個網頁版的程式碼編輯器
+3. 把編輯器裡原本的預設程式碼**整個刪掉**
+4. 打開這個 repo 裡的 `worker/dashboard-single-file.js`，把整份內容複製、貼進編輯器
+5. 按右上角「部署」（Deploy / Save and deploy）
+6. 部署完，瀏覽器打開該 Worker 的網址加上 `/api/test-sheets`（Worker 網址可以在「概觀」頁複製，長得像 `https://ygg-hidden-star-9fe8.你的帳號.workers.dev`），確認看到 `{"ok":true,"values":[...]}`
+
+之所以要用 `dashboard-single-file.js` 這份「整合版」而不是 `src/index.js`，是因為網頁版編輯器不像本機開發環境，沒辦法拆成多個檔案互相 `import`，所以把三個檔案的內容先合併成一份，貼上就能直接用。之後如果程式邏輯有改，也要記得同步更新這份檔案。
+
+#### 方法 B：用終端機 + wrangler 指令（開發者/之後迭代用）
+
+`wrangler.toml` 的 `name` 要跟 Dashboard 上這個 Worker 的名字完全一致（例如 `ygg-hidden-star-9fe8`），部署才會部署到「同一個」已經設好機密的 Worker，而不是另外建一個新的。因為機密已經在 Dashboard 設定好了，`wrangler.toml` 刻意沒有再宣告這兩個變數，避免部署時把 Dashboard 上設定好的值覆蓋掉。
 
 ```bash
 npx wrangler login
 npm run deploy
 ```
-
-部署完，瀏覽器打開 `https://ygg-hidden-star-9fe8.<你的 Cloudflare 帳號 subdomain>.workers.dev/api/test-sheets`（正式網址可以在 Dashboard「概觀」頁看到），確認回傳 `{"ok":true,"values":[...]}`。
 
 > 如果之後想改用指令設定機密（例如要輪替金鑰），可以用：
 > ```bash
@@ -105,6 +114,7 @@ npm run deploy
 - `src/googleAuth.js`：用 Service Account JSON 金鑰換 Google API access token（RS256 JWT 簽章，純 Web Crypto API，無額外套件）
 - `src/sheets.js`：呼叫 Google Sheets API 讀取資料
 - `.dev.vars.example`：本機測試環境變數範本（`.dev.vars` 本身已加進 `.gitignore`，不會被 commit）
+- `dashboard-single-file.js`：合併版程式碼，專門給不用終端機、直接在 Cloudflare Dashboard 網頁編輯器貼上部署用
 
 ## 下一步（Phase 3-2 之後）
 
