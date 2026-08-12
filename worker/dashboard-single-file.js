@@ -580,7 +580,7 @@ async function handleUpdateOrder(request, env, orderId) {
 }
 
 // PATCH /settings：老闆改公告、開關預購、改店家資料等單一設定值。
-// Settings 分頁是 key-value 格式（欄位「key」「value」），這支可以一次更新多組。
+// Settings 分頁是 key-value 格式（欄位「setting_key」「setting_value」），這支可以一次更新多組。
 // 傳入的 key 如果 Settings 裡已經有就更新該列，沒有就新增一列（upsert）。
 async function handleUpdateSettings(request, env) {
   let body;
@@ -601,14 +601,14 @@ async function handleUpdateSettings(request, env) {
   const updated = {};
 
   for (const [key, value] of Object.entries(body)) {
-    const found = await findRowByKey(accessToken, spreadsheetId, "Settings", "key", key);
+    const found = await findRowByKey(accessToken, spreadsheetId, "Settings", "setting_key", key);
 
     if (found) {
       const { header, row, rowNumber } = found;
-      const keyIndex = header.indexOf("key");
-      const valueIndex = header.indexOf("value");
+      const keyIndex = header.indexOf("setting_key");
+      const valueIndex = header.indexOf("setting_value");
       if (valueIndex === -1) {
-        throw new Error('Settings 分頁找不到欄位「value」');
+        throw new Error('Settings 分頁找不到欄位「setting_value」');
       }
 
       const newRow = header.map((_, i) => (row[i] !== undefined ? row[i] : ""));

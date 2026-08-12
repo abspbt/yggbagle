@@ -318,17 +318,33 @@ npm run deploy
 
 ### `PATCH /settings`
 
-改公告、開關預購、改店家資料等單一設定值。`Settings` 分頁是 key-value 格式（欄位「key」「value」），這支可以一次更新多組 key，Sheets 裡已經有的 key 會更新該列，沒有的話會新增一列（upsert）。
+改公告、開關預購、改店家資料等單一設定值。`Settings` 分頁是 key-value 格式，欄位是 **`setting_key`、`setting_value`**（已對照過 Phase 2 實際建好的 Sheets），這支可以一次更新多組 key，Sheets 裡已經有的 key 會更新該列，沒有的話會新增一列（upsert）。
+
+目前 `Settings` 分頁裡已經有的 key：
+
+| setting_key | 用途 |
+|---|---|
+| `shop_name` | 店家名稱 |
+| `shop_intro` | 店家簡介 |
+| `shop_line` | LINE 官方帳號 |
+| `shop_phone` | 店家電話 |
+| `shop_address` | 店家地址 |
+| `bank_name` | 匯款銀行名稱 |
+| `bank_account` | 匯款帳號 |
+| `bank_owner` | 匯款戶名 |
+| `announcement_text` | 公告文字 |
+| `announcement_visible` | 公告是否顯示（`TRUE`/`FALSE`） |
+| `preorder_open` | 預購開關（`TRUE`/`FALSE`） |
+| `pause_message` | 預購暫停時顯示的訊息 |
 
 ```json
 {
   "announcement_text": "本週六預購開放中！",
-  "preorder_open": "true"
+  "preorder_open": "TRUE"
 }
 ```
 
-- ⚠️ **這裡假設 `Settings` 分頁的欄位名稱是「key」「value」，實際 key 值要跟 Phase 2 建好的那份 Sheets 對照**（例如公告文字、預購開關的 key 到底叫 `announcement_text` 還是別的名字，請先打開 Sheets 的 `Settings` 分頁確認，再讓前端用正確的 key 呼叫這支 API）
-- 因為是 upsert，key 打錯字不會報錯、只會在 Sheets 裡多一列新的設定，要小心拼字
+- 因為是 upsert，key 打錯字不會報錯、只會在 Sheets 裡多一列新的設定，要小心拼字——盡量用上表已經有的 key，不要自己發明新的
 
 ## 檔案結構
 
