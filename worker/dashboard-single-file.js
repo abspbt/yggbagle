@@ -335,7 +335,7 @@ async function handleCreateOrder(request, env) {
 
     const maxPerOrder = toNumber(product.max_per_order);
     if (maxPerOrder > 0 && quantity > maxPerOrder) {
-      return json({ ok: false, error: `${product.name} 每筆訂單最多只能訂 ${maxPerOrder} 個` }, { status: 400 });
+      return json({ ok: false, error: `${product.name} 每筆訂單最多只能訂 ${maxPerOrder} 袋` }, { status: 400 });
     }
 
     const unitPrice = toNumber(product.price);
