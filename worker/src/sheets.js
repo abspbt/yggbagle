@@ -56,3 +56,60 @@ export async function appendRows(accessToken, spreadsheetId, sheetName, rows) {
 
   return res.json();
 }
+
+// 把數字欄位編號轉成 Sheets 的欄位字母（1 -> A、27 -> AA），給 updateRow 組 range 用。
+function columnLetter(n) {
+  let letter = "";
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    letter = String.fromCharCode(65 + rem) + letter;
+    n = Math.floor((n - 1) / 26);
+  }
+  return letter;
+}
+
+// 覆寫某張表指定列（rowNumber 是 Sheets 上實際的列號，從 1 開始，含標題列）的整列內容。
+export async function updateRow(accessToken, spreadsheetId, sheetName, rowNumber, values) {
+  const range = `${sheetName}!A${rowNumber}:${columnLetter(values.length)}${rowNumber}`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
+    range
+  )}?valueInputOption=USER_ENTERED`;
+
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ values: [values] }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`寫入 Google Sheets 失敗 (${res.status}): ${text}`);
+  }
+
+  return res.json();
+}
+
+// 在某張表裡找欄位名稱是 keyColumn、值等於 keyValue 的那一列，
+// 回傳欄位標題列、該列目前的值、以及它在 Sheets 上的實際列號（給 updateRow 用）。
+// 找不到就回傳 null。
+export async function findRowByKey(accessToken, spreadsheetId, sheetName, keyColumn, keyValue) {
+  const values = await getValues(accessToken, spreadsheetId, sheetName);
+  if (values.length === 0) return null;
+
+  const [header, ...rows] = values;
+  const keyIndex = header.indexOf(keyColumn);
+  if (keyIndex === -1) {
+    throw new Error(`分頁「${sheetName}」找不到欄位「${keyColumn}」`);
+  }
+
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i][keyIndex] === keyValue) {
+      return { header, row: rows[i], rowNumber: i + 2 };
+    }
+  }
+
+  return null;
+}

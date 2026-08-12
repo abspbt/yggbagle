@@ -91,6 +91,14 @@ curl -X POST http://localhost:8787/orders \
 
 或用 [Postman](https://www.postman.com/) 這類圖形化工具（不用打指令，填表單即可）送出 POST 請求測試。
 
+Phase 3-4 新增的 `PATCH` endpoint（`/products/:id`、`/orders/:id`、`/settings`）也一樣要用 curl 或 Postman 測試，瀏覽器網址列沒辦法送出 `PATCH` 請求，例如：
+
+```bash
+curl -X PATCH http://localhost:8787/products/P001 \
+  -H "Content-Type: application/json" \
+  -d '{"active": false}'
+```
+
 ### 部署到 Cloudflare（正式環境）
 
 #### 方法 A：不用終端機，全部在網頁上做（推薦給不熟終端機的人）
@@ -254,16 +262,99 @@ npm run deploy
 { "ok": false, "error": "此檔期目前未開放預購" }
 ```
 
+## 老闆端寫入 API（Phase 3-4）
+
+> ⚠️ **這四支 endpoint 目前完全沒有登入驗證，誰知道網址都能打。** PIN 登入 + 短期 Token 驗證是 Phase 3-5 的範圍，屆時會補上；在那之前不要把這些網址公開分享。
+
+### `POST /products`
+
+新增商品。
+
+```json
+{
+  "campaign_id": "C001",
+  "name": "抹茶紅豆貝果（有餡）",
+  "category": "貝果",
+  "price": 55,
+  "max_per_order": 5,
+  "active": true
+}
+```
+
+- `campaign_id`、`name` 為必填，其他欄位可省略（`active` 預設 `true`）
+- 商品編號自動產生，格式 `P001`、`P002`...，取現有商品裡最大編號 +1（不分檔期，跨檔期共用同一組編號）
+- 成功回傳 HTTP 201，內容跟 `GET /products` 裡單筆商品的格式一樣（多一個 `product_id`）
+
+### `PATCH /products/:product_id`
+
+編輯商品，例如上下架切換、改價格。只有請求裡帶到的欄位會被更新，其他欄位維持原樣。
+
+```json
+{ "active": false }
+```
+
+```json
+{ "price": 50, "max_per_order": 8 }
+```
+
+- 找不到該 `product_id` 回 HTTP 404
+- 成功回傳更新後的完整商品內容
+
+### `PATCH /orders/:order_id`
+
+老闆核對付款截圖後標記付款狀態、更新訂單狀態（4 段：`new` → `prepping_done` → `picked_up`，或 `cancelled`）、改備註。三個欄位都可選，至少要帶一個。
+
+```json
+{ "payment_status": "confirmed" }
+```
+
+```json
+{ "order_status": "prepping_done" }
+```
+
+- `payment_status` 只能是 `pending` 或 `confirmed`；`order_status` 只能是 `new`、`prepping_done`、`picked_up`、`cancelled`，帶了不在清單內的值會回 HTTP 400
+- 找不到該 `order_id` 回 HTTP 404
+- 成功回傳更新後的訂單內容（不含 `items`，品項明細請用 `GET /orders`）
+
+### `PATCH /settings`
+
+改公告、開關預購、改店家資料等單一設定值。`Settings` 分頁是 key-value 格式，欄位是 **`setting_key`、`setting_value`**（已對照過 Phase 2 實際建好的 Sheets），這支可以一次更新多組 key，Sheets 裡已經有的 key 會更新該列，沒有的話會新增一列（upsert）。
+
+目前 `Settings` 分頁裡已經有的 key：
+
+| setting_key | 用途 |
+|---|---|
+| `shop_name` | 店家名稱 |
+| `shop_intro` | 店家簡介 |
+| `shop_line` | LINE 官方帳號 |
+| `shop_phone` | 店家電話 |
+| `shop_address` | 店家地址 |
+| `bank_name` | 匯款銀行名稱 |
+| `bank_account` | 匯款帳號 |
+| `bank_owner` | 匯款戶名 |
+| `announcement_text` | 公告文字 |
+| `announcement_visible` | 公告是否顯示（`TRUE`/`FALSE`） |
+| `preorder_open` | 預購開關（`TRUE`/`FALSE`） |
+| `pause_message` | 預購暫停時顯示的訊息 |
+
+```json
+{
+  "announcement_text": "本週六預購開放中！",
+  "preorder_open": "TRUE"
+}
+```
+
+- 因為是 upsert，key 打錯字不會報錯、只會在 Sheets 裡多一列新的設定，要小心拼字——盡量用上表已經有的 key，不要自己發明新的
+
 ## 檔案結構
 
 - `wrangler.toml`：Worker 設定（名稱、非機密環境變數）
-- `src/index.js`：Worker 進入點，包含 `/api/test-sheets` 測試 endpoint、`/products`、`/campaigns`、`/orders`（GET）讀取 API，以及 `/orders`（POST）建立訂單 API
+- `src/index.js`：Worker 進入點，包含讀取 API（`/api/test-sheets`、`/products`、`/campaigns`、`/orders` 的 GET）和寫入 API（`POST /orders`、`POST /products`、`PATCH /products/:id`、`PATCH /orders/:id`、`PATCH /settings`）
 - `src/googleAuth.js`：用 Service Account JSON 金鑰換 Google API access token（RS256 JWT 簽章，純 Web Crypto API，無額外套件）
-- `src/sheets.js`：呼叫 Google Sheets API 讀寫資料，`getSheetRows` 把整張表轉成「第一列是欄位名稱」的物件陣列，`appendRows` 把資料列附加到某張表最後面
+- `src/sheets.js`：呼叫 Google Sheets API 讀寫資料——`getSheetRows` 把整張表轉成物件陣列、`appendRows` 附加新列、`findRowByKey` 依欄位值找到某一列、`updateRow` 覆寫指定列
 - `.dev.vars.example`：本機測試環境變數範本（`.dev.vars` 本身已加進 `.gitignore`，不會被 commit）
 - `dashboard-single-file.js`：合併版程式碼，專門給不用終端機、直接在 Cloudflare Dashboard 網頁編輯器貼上部署用
 
-## 下一步（Phase 3-4 之後）
+## 下一步（Phase 3-5）
 
-- 老闆端寫入 API（改商品、改公告、改付款狀態、開關預購）
-- PIN 登入 + 短期 Token 驗證機制
+- PIN 登入 + 短期 Token 驗證機制，並補到 Phase 3-4 這幾支寫入 API 上
