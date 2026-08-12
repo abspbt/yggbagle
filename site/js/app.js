@@ -856,41 +856,6 @@
     return lines.join("\n");
   }
 
-  var html2canvasPromise = null;
-  function loadHtml2Canvas() {
-    if (window.html2canvas) return Promise.resolve(window.html2canvas);
-    if (!html2canvasPromise) {
-      html2canvasPromise = new Promise(function (resolve, reject) {
-        var script = document.createElement("script");
-        script.src = "js/vendor/html2canvas.min.js";
-        script.onload = function () {
-          resolve(window.html2canvas);
-        };
-        script.onerror = function () {
-          reject(new Error("圖片功能載入失敗"));
-        };
-        document.body.appendChild(script);
-      });
-    }
-    return html2canvasPromise;
-  }
-
-  // 圖片產生失敗（載入失敗、渲染出錯等）就回傳 null，讓呼叫端退回純文字分享，不擋住整體流程。
-  async function captureOrderImage(order) {
-    try {
-      var html2canvas = await loadHtml2Canvas();
-      var target = document.querySelector(".done-card-detail");
-      var canvas = await html2canvas(target, { backgroundColor: "#ffffff", scale: 2 });
-      var blob = await new Promise(function (resolve) {
-        canvas.toBlob(resolve, "image/png");
-      });
-      if (!blob) return null;
-      return new File([blob], order.order_id + ".png", { type: "image/png" });
-    } catch {
-      return null;
-    }
-  }
-
   async function copyTextToClipboard(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(text);
@@ -907,50 +872,18 @@
     document.body.removeChild(textarea);
   }
 
-  function downloadFile(file, filename) {
-    var url = URL.createObjectURL(file);
-    var a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(function () {
-      URL.revokeObjectURL(url);
-    }, 1000);
-  }
-
+  // 這顆按鈕只做一件事：把明細複製成文字，行為固定、每支手機都一樣，
+  // 不再嘗試判斷裝置支不支援分享/圖片，避免客人猜不到按下去會發生什麼事。
   els.saveShareBtn.addEventListener("click", async function () {
     var order = state.lastOrder;
     if (!order) return;
 
-    var originalLabel = els.saveShareBtn.textContent;
-    els.saveShareBtn.disabled = true;
-    els.saveShareBtn.textContent = "準備中…";
     setShareStatus("");
-
     try {
-      var text = buildOrderShareText(order);
-      var imageFile = await captureOrderImage(order);
-
-      if (imageFile && navigator.share && navigator.canShare && navigator.canShare({ files: [imageFile] })) {
-        await navigator.share({ title: "訂購明細", text: text, files: [imageFile] });
-        setShareStatus("已開啟分享選單。");
-      } else if (navigator.share) {
-        await navigator.share({ title: "訂購明細", text: text });
-        setShareStatus("已開啟分享選單。");
-      } else {
-        await copyTextToClipboard(text);
-        if (imageFile) downloadFile(imageFile, order.order_id + ".png");
-        setShareStatus("已複製明細文字" + (imageFile ? "，圖片也已下載" : "") + "，請自行貼到 LINE。");
-      }
-    } catch (err) {
-      if (!err || err.name !== "AbortError") {
-        setShareStatus("分享失敗，請直接截圖保留這個畫面。");
-      }
-    } finally {
-      els.saveShareBtn.disabled = false;
-      els.saveShareBtn.textContent = originalLabel;
+      await copyTextToClipboard(buildOrderShareText(order));
+      setShareStatus("已複製，可以貼到 LINE 了。");
+    } catch {
+      setShareStatus("複製失敗，請直接截圖保留這個畫面。");
     }
   });
 
