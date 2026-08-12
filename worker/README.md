@@ -200,6 +200,33 @@ npm run deploy
 }
 ```
 
+### `GET /settings`（Phase 4 新增）
+
+公開讀取店家資料、公告、預購開關等設定值，給顧客網站用。回傳 `Settings` 分頁目前全部的 key-value（裡面沒有顧客個資，都是可以公開的店家資訊）。
+
+```json
+{
+  "ok": true,
+  "settings": {
+    "shop_name": "歪嘴雞烘焙",
+    "shop_intro": "手工窯烤麵包，每週三、六限量預購。",
+    "shop_line": "@ykjbakery",
+    "shop_phone": "0912-345-678",
+    "shop_address": "台中市西區美村路一段123號",
+    "bank_name": "玉山銀行 808",
+    "bank_account": "1234-567-890123",
+    "bank_owner": "陳O雯",
+    "announcement_text": "本週六預購開放中！",
+    "announcement_visible": "TRUE",
+    "preorder_open": "TRUE",
+    "pause_message": "目前暫停接單，恢復時間將於粉絲頁公告，謝謝您的支持！"
+  }
+}
+```
+
+- 老闆用 `PATCH /settings`（需登入）改的值，這支馬上就會讀到最新的
+- `announcement_visible`、`preorder_open` 是文字 `"TRUE"`/`"FALSE"`（跟 Sheets 資料驗證下拉選單的值一致），前端要自己轉成布林值判斷
+
 ### `GET /orders`
 
 > 🔒 **這支從 Phase 3-5 開始需要登入**（訂單裡有顧客姓名電話，不能公開），要帶 `Authorization: Bearer <token>`，見下方「PIN 登入 API」。
@@ -418,7 +445,7 @@ Token 是 Worker 自己用 `TOKEN_SECRET` 簽出來的一串「到期時間 + HM
 ## 檔案結構
 
 - `wrangler.toml`：Worker 設定（名稱、非機密環境變數）
-- `src/index.js`：Worker 進入點，包含讀取 API（`/api/test-sheets`、`/products`、`/campaigns`、`/orders` 的 GET）、寫入 API（`POST /orders`、`POST /products`、`PATCH /products/:id`、`PATCH /orders/:id`、`PATCH /settings`），以及 `POST /auth/login` PIN 登入
+- `src/index.js`：Worker 進入點，包含讀取 API（`/api/test-sheets`、`/products`、`/campaigns`、`/settings`、`/orders` 的 GET）、寫入 API（`POST /orders`、`POST /products`、`PATCH /products/:id`、`PATCH /orders/:id`、`PATCH /settings`），以及 `POST /auth/login` PIN 登入
 - `src/auth.js`：老闆登入用的短期 token 簽發與驗證（HMAC-SHA256，純 Web Crypto API，無額外套件、不需要 D1/KV）
 - `src/googleAuth.js`：用 Service Account JSON 金鑰換 Google API access token（RS256 JWT 簽章，純 Web Crypto API，無額外套件）
 - `src/sheets.js`：呼叫 Google Sheets API 讀寫資料——`getSheetRows` 把整張表轉成物件陣列、`appendRows` 附加新列、`findRowByKey` 依欄位值找到某一列、`updateRow` 覆寫指定列
@@ -427,5 +454,5 @@ Token 是 Worker 自己用 `TOKEN_SECRET` 簽出來的一串「到期時間 + HM
 
 ## 下一步（Phase 4）
 
-- 顧客預購網站前端，串接目前公開不需要登入的 `GET /products`、`GET /campaigns`、`POST /orders`
+- 顧客預購網站前端，串接目前公開不需要登入的 `GET /products`、`GET /campaigns`、`GET /settings`、`POST /orders`
 - Phase 6 會把老闆 PWA 從假資料換成真的串接這裡的所有 API，包含 `POST /auth/login`

@@ -747,6 +747,20 @@ async function handleUpdateSettings(request, env) {
   return json({ ok: true, settings: updated });
 }
 
+// GET /settings：公開讀取店家資料、公告、預購開關等設定值，給顧客網站用。
+// Settings 分頁是 key-value 格式，這裡全部回傳（裡面沒有顧客個資，都是可公開的店家資訊）。
+async function handleGetSettings(env) {
+  const { accessToken, spreadsheetId } = await getAuthedContext(env);
+  const rows = await getSheetRows(accessToken, spreadsheetId, "Settings");
+
+  const settings = {};
+  for (const row of rows) {
+    if (row.setting_key) settings[row.setting_key] = row.setting_value;
+  }
+
+  return json({ ok: true, settings });
+}
+
 // GET /campaigns：目前 active 的檔期，含各自的取貨時段。
 async function handleCampaigns(env) {
   const { accessToken, spreadsheetId } = await getAuthedContext(env);
@@ -906,9 +920,10 @@ export default {
         return json({ ok: true, values });
       }
 
-      // 顧客網站要讀的商品/檔期資訊，公開不需要登入。
+      // 顧客網站要讀的商品/檔期/店家設定資訊，公開不需要登入。
       if (url.pathname === "/products") return await handleProducts(env);
       if (url.pathname === "/campaigns") return await handleCampaigns(env);
+      if (url.pathname === "/settings") return await handleGetSettings(env);
 
       // 訂單列表含顧客姓名電話，只有老闆能看，需要登入。
       if (url.pathname === "/orders") {
