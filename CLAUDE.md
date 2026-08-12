@@ -8,7 +8,8 @@
 - ✅ Phase 3-1：Worker 專案初始化 + Google Sheets API 授權設定（已完成，見下方備註）
 - ✅ Phase 3-2：讀取 API（已完成，見下方備註）
 - ✅ Phase 3-3：寫入 API（已完成，見下方備註）
-- ⏭️ 下一步：Phase 3-4（老闆端寫入 API：改商品、改公告、改付款狀態、開關預購）
+- ✅ Phase 3-4：老闆端寫入 API（已完成，見下方備註）
+- ⏭️ 下一步：Phase 3-5（PIN 登入 + 短期 Token 驗證機制）
 
 **Phase 3-1 備註**：
 - 已建立 Google Cloud Service Account，金鑰以「秘密」類型設定在 Cloudflare Dashboard 的 Worker 環境變數（`SPREADSHEET_ID`、`GOOGLE_SERVICE_ACCOUNT_KEY`），沒有寫進程式碼或 repo
@@ -32,6 +33,13 @@
 - 訂單編號格式 `ORD-YYYYMMDD-XXXX`（台北時區日期 + 當天流水號），用「讀了再寫」算下一個流水號，不做原子鎖——跟 Phase 5 總量控制走一樣的取捨（極端情況下可能撞號，機率很低，先接受這個風險，之後真的常常發生的話再回頭處理）
 - `worker/src/sheets.js` 新增 `appendRows()` 寫入輔助函式
 - API 細節、請求/回應範例、curl 測試方法見 `worker/README.md`
+
+**Phase 3-4 備註**：
+- 新增四支老闆端寫入 API：`POST /products`（新增商品，自動產生 `P001`、`P002`... 編號）、`PATCH /products/:id`（編輯商品，只更新有帶到的欄位）、`PATCH /orders/:id`（確認付款狀態、更新訂單 4 段狀態、改備註）、`PATCH /settings`（改公告/開關預購/店家資料，key-value upsert）
+- **⚠️ 這四支目前完全沒有登入驗證，誰都能打**，程式碼跟 README 都有標註，Phase 3-5 要記得補上
+- `Settings` 分頁實際欄位是 `setting_key`/`setting_value`（不是原本猜的 `key`/`value`，已經跟老闆核對過 Sheets 實際內容修正），已有的 key 清單（`shop_name`、`shop_intro`、`shop_line`、`shop_phone`、`shop_address`、`bank_name`、`bank_account`、`bank_owner`、`announcement_text`、`announcement_visible`、`preorder_open`、`pause_message`）列在 `worker/README.md`
+- `worker/src/sheets.js` 新增 `findRowByKey()`（依欄位值找到某一列）、`updateRow()`（覆寫指定列）兩個輔助函式
+- API 細節、請求/回應範例、curl/Postman 測試方法見 `worker/README.md`
 
 Phase 0 各頁 Wireframe 定案內容已整理成交接摘要，見對話紀錄
 （今日 Dashboard、商品管理、訂單列表+付款確認、公告設定、
