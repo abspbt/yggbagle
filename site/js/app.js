@@ -4,6 +4,7 @@
   var API_BASE = "https://ygg-hidden-star-9fe8.drum3126.workers.dev";
 
   var els = {
+    topInfo: document.getElementById("top-info"),
     shopName: document.getElementById("shop-name"),
     shopIntro: document.getElementById("shop-intro"),
     announcement: document.getElementById("announcement"),
@@ -120,6 +121,10 @@
     document.documentElement.style.setProperty("--cartbar-h", h + "px");
   }
 
+  function syncTopInfoHeight() {
+    document.documentElement.style.setProperty("--topinfo-h", els.topInfo.offsetHeight + "px");
+  }
+
   async function fetchJson(path, options) {
     var res = await fetch(API_BASE + path, options);
     var data;
@@ -212,6 +217,8 @@
     } else {
       els.headerLineLink.classList.add("hidden");
     }
+
+    syncTopInfoHeight();
   }
 
   function startOrderFlow() {
@@ -661,6 +668,7 @@
   });
   els.cartNextBtn.addEventListener("click", goNext);
   window.addEventListener("resize", syncCartBarHeight);
+  window.addEventListener("resize", syncTopInfoHeight);
   els.cartDetails.addEventListener("toggle", syncCartBarHeight);
 
   els.retryBtn.addEventListener("click", init);
