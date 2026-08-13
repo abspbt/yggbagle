@@ -33,8 +33,36 @@ Cloudflare Pages，掛上正式網域（如果我有的話），並確認 Worker
 - Worker 已經上線且穩定運作：`https://ygg-hidden-star-9fe8.drum3126.workers.dev`，
   CORS 目前是開放所有來源（`Access-Control-Allow-Origin: *`），所以不管顧客網站/PWA
   部署到哪個網域，理論上都不用改 Worker 的 CORS 設定
-- 我沒有主動提到自己有沒有現成的 Cloudflare 網域，這是 Phase 7 一開始要先問清楚的事——
-  如果我沒有網域，Cloudflare Pages 預設會給一個 `*.pages.dev` 的免費子網域，也可以先用這個
+- 網域：我會先跟業主確認、購買正式網域後再串接，還沒買之前可以先用 Cloudflare Pages
+  預設的 `*.pages.dev` 子網域開發測試
+
+---
+
+## 網域與多團購架構規劃（Phase 7 前先討論定案的方向，實作留給 Phase 7）
+
+老闆之後想做「不同類型的團購」（跟現在的貝果團購方向不同、要分開處理），跟 Claude
+討論後決定的架構方向如下，**之後開新對話做 Phase 7 時，這段可以直接照著做，不用重新討論**：
+
+- **首頁**：業主買好正式網域後，網域主網址直接連到**放在 GitHub Pages 的首頁**——
+  一頁式、適合手機閱讀，內容是簡單店家資料、目前檔期公告、跟連到各團購單的連結。
+  這個首頁**目前還沒開始做**，repo 裡也還沒有對應的資料夾，Phase 7（或更早）要先決定
+  這個首頁放在哪個 repo／資料夾、跟現有的 `site/`、`js/` 這些會不會放在同一個 repo
+- **團購單（顧客訂購頁）**：全部放同一個 **Cloudflare Pages 專案**，用資料夾對應子路徑
+  的方式管理，不用每個團購單各開一個 Cloudflare Pages 專案：
+  ```
+  /team-a/index.html  →  子網域.yourdomain.com/team-a/
+  /team-b/index.html  →  子網域.yourdomain.com/team-b/
+  ```
+  現有的 `site/` 資料夾就是「團購單A」（貝果團購），以後要加團購單B時，是在 repo 裡
+  開一個平行的資料夾（結構可能要調整成 `pages/team-a/`、`pages/team-b/` 這種更乾淨的分組，
+  實際怎麼命名/整理留給 Phase 7 動手時再決定），然後把 Cloudflare Pages 專案的「根目錄」
+  設定指到能同時看到所有團購單資料夾的那一層
+  - 取捨：一個 Cloudflare Pages 專案管所有團購單，代表每次 push 到 repo，全部團購單會
+    一起重新部署（不會互相影響內容，只是同時觸發部署），對一人商家來說這樣最好維護；
+    真的需要團購單之間完全獨立部署時，才需要拆成多個 Cloudflare Pages 專案
+- **老闆後台 PWA**：這次討論**沒有涵蓋** PWA 要不要搬到 Cloudflare Pages，維持前面
+  「目前狀態」段落寫的：PWA 目前暫時掛在 GitHub Pages，要不要正式搬家還沒決定，
+  Phase 7 開始時要記得單獨確認這件事
 
 ---
 
@@ -52,11 +80,13 @@ Cloudflare Pages，掛上正式網域（如果我有的話），並確認 Worker
 
 ---
 
-## Phase 7 要做的事（照 `CLAUDE.md` 大綱）
+## Phase 7 要做的事（照 `CLAUDE.md` 大綱，已依上面的架構規劃調整）
 
-- [ ] 顧客網站部署到 Cloudflare Pages（例如 `order.yourdomain.com`，或先用 `*.pages.dev`）
-- [ ] 老闆 PWA 部署到 Cloudflare Pages（例如 `admin.yourdomain.com`，或先用 `*.pages.dev`；
-      或是我決定繼續沿用 GitHub Pages 也可以，這個要先跟我確認）
+- [ ] 跟業主確認網域購買狀況，決定主網址／子網域怎麼分配（首頁走主網址、團購單走哪個子網域）
+- [ ] 建立「首頁」（一頁式、店家資料+公告+連結），部署到 GitHub Pages，決定放在哪個 repo／資料夾
+- [ ] 顧客團購單（現有 `site/`）部署到 Cloudflare Pages，用資料夾對應子路徑的方式管理，
+      為未來新增團購單B、C…預留空間（見上面「網域與多團購架構規劃」）
+- [ ] 老闆 PWA 部署方式待確認（繼續留在 GitHub Pages，或搬到 Cloudflare Pages），這次討論沒有定案
 - [ ] 確認 Worker 路由/CORS 設定跟新網域相容（目前是開放所有來源，理論上不用改，但要實際測試過）
 - [ ] DNS 設定確認可以從外部（不是本機、不是開發環境）正常連線
 - [ ] PWA 部署到新網址後，要確認「加到主畫面」還能正常運作（`manifest.json` 的
@@ -84,12 +114,11 @@ PIN 登入、各頁面功能都正常。
 Phase 0～6 都已經完成並併回 main，Google Sheets 表結構、Worker API、顧客網站前端、
 老闆後台 PWA 都已經串好真實資料，功能可以正常運作。
 
-現在要做 Phase 7：把顧客預購網站（site/ 資料夾）跟老闆後台 PWA（repo 根目錄）都部署到
-Cloudflare Pages，掛上正式網域（如果我有的話），並確認 Worker 的 CORS／路由設定沒問題。
-
-目前顧客網站完全沒部署過；老闆 PWA 是暫時透過 GitHub Pages
-（https://abspbt.github.io/yggbagle/）在跑，這不是原本規劃的路線，Phase 7 要先跟我確認
-要不要正式搬到 Cloudflare Pages。
+現在要做 Phase 7：部署 + 網域設定。已經先想好的架構方向（詳見文件裡「網域與多團購架構規劃」）：
+業主買好網域後，主網址連到放在 GitHub Pages 的一頁式首頁（店家資料+公告+連結）；顧客團購單
+（現有 site/ 資料夾）部署到同一個 Cloudflare Pages 專案，用資料夾對應子路徑的方式管理，
+為未來的團購單B、C…預留擴充空間。老闆後台 PWA 要不要從目前暫時的 GitHub Pages
+（https://abspbt.github.io/yggbagle/）搬到 Cloudflare Pages，這次還沒定案，要先跟我確認。
 
 詳細背景、目前狀態、Repo 結構都寫在 HANDOFF_PHASE7_DEPLOY.md，請先讀這份文件再開始。
 
