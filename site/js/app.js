@@ -57,6 +57,7 @@
     doneBankInfo: document.getElementById("done-bank-info"),
     doneLineLink: document.getElementById("done-line-link"),
     restartBtn: document.getElementById("restart-btn"),
+    headerLineLink: document.getElementById("header-line-link"),
   };
 
   var stepSections = {
@@ -179,6 +180,13 @@
     }
   }
 
+  function buildLineUrl(handle) {
+    if (!handle) return "";
+    return handle.indexOf("http") === 0
+      ? handle
+      : "https://line.me/R/ti/p/" + encodeURIComponent(handle);
+  }
+
   function applyShopInfo() {
     var s = state.settings;
     if (s.shop_name) {
@@ -192,6 +200,14 @@
       els.announcement.classList.remove("hidden");
     } else {
       els.announcement.classList.add("hidden");
+    }
+
+    var headerLineUrl = buildLineUrl(s.shop_line);
+    if (headerLineUrl) {
+      els.headerLineLink.href = headerLineUrl;
+      els.headerLineLink.classList.remove("hidden");
+    } else {
+      els.headerLineLink.classList.add("hidden");
     }
   }
 
@@ -810,11 +826,8 @@
       bankRow("戶名", s.bank_owner) +
       bankRow("金額", money(grandTotal));
 
-    var lineHandle = s.shop_line || "";
-    if (lineHandle) {
-      var lineUrl = lineHandle.indexOf("http") === 0
-        ? lineHandle
-        : "https://line.me/R/ti/p/" + encodeURIComponent(lineHandle);
+    var lineUrl = buildLineUrl(s.shop_line);
+    if (lineUrl) {
       els.doneLineLink.href = lineUrl;
       els.doneLineLink.classList.remove("hidden");
     } else {
