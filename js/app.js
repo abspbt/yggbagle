@@ -484,7 +484,9 @@ function fulfillmentSummary(o, slotMap) {
   return slot ? `自取 · ${escapeHtml(slot.date)} ${escapeHtml(slot.time_range)}` : '自取';
 }
 
-let orderFilter = { chip: 'all', search: '' };
+// 訂單列表預設只看「目前這檔」，避免舊團購的一堆已取消/已取貨訂單擠在畫面上；
+// campaign 是 null 代表還沒決定，第一次載入時會自動選目前 active 的檔期（沒有的話退回全部檔期）。
+let orderFilter = { chip: 'all', search: '', campaign: null };
 
 async function renderOrdersList() {
   loadingPage({ title: '訂單列表' });
@@ -501,7 +503,14 @@ async function renderOrdersList() {
   }
 
   const orders = ordersData.orders || [];
-  const slotMap = buildSlotMap(campaignsData.campaigns || []);
+  const campaigns = campaignsData.campaigns || [];
+  const slotMap = buildSlotMap(campaigns);
+
+  if (orderFilter.campaign === null) {
+    const active = campaigns.find(c => c.status === 'active');
+    orderFilter.campaign = active ? active.campaign_id : 'all';
+  }
+  const campaignChips = [{ campaign_id: 'all', name: '全部檔期' }, ...campaigns.slice().reverse()];
 
   const chips = [
     { key: 'all', label: '全部' },
@@ -515,6 +524,7 @@ async function renderOrdersList() {
   ];
 
   let list = orders.slice();
+  if (orderFilter.campaign !== 'all') list = list.filter(o => o.campaign_id === orderFilter.campaign);
   if (orderFilter.chip === 'pending') list = list.filter(o => o.payment_status === 'pending' && o.order_status === 'new');
   else if (orderFilter.chip === 'confirmed') list = list.filter(o => o.payment_status === 'confirmed' && o.order_status === 'new');
   else if (orderFilter.chip === 'prepping_done') list = list.filter(o => o.order_status === 'prepping_done');
@@ -551,12 +561,21 @@ async function renderOrdersList() {
     <div class="page">
       <input class="search-input" id="order-search" placeholder="搜尋訂單編號 / 姓名 / 電話" value="${escapeHtml(orderFilter.search)}" />
       <div class="chip-row">
+        ${campaignChips.map(c => `<button class="chip ${orderFilter.campaign === c.campaign_id ? 'active' : ''}" data-campaign-chip="${c.campaign_id}">${escapeHtml(c.name)}</button>`).join('')}
+      </div>
+      <div class="chip-row">
         ${chips.map(c => `<button class="chip ${orderFilter.chip === c.key ? 'active' : ''}" data-chip="${c.key}">${c.label}</button>`).join('')}
       </div>
       ${cards || `<div class="empty-state"><div class="icon">📭</div>沒有符合條件的訂單</div>`}
     </div>
   `);
 
+  root.querySelectorAll('[data-campaign-chip]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      orderFilter.campaign = btn.getAttribute('data-campaign-chip');
+      renderOrdersList();
+    });
+  });
   root.querySelectorAll('[data-chip]').forEach(btn => {
     btn.addEventListener('click', () => {
       orderFilter.chip = btn.getAttribute('data-chip');
@@ -997,6 +1016,10 @@ async function renderAnnouncement() {
 const CAMPAIGN_STATUS_LABEL = { active: '進行中', upcoming: '即將開始', ended: '已結束' };
 const CAMPAIGN_STATUS_BADGE = { active: 'badge-active', upcoming: 'badge-upcoming', ended: 'badge-ended' };
 
+// 預設只顯示「進行中／即將開始」的檔期，已結束的收在「全部（含已結束）」裡，
+// 避免團購做久了舊檔期愈堆愈多——資料本身完全不受影響，純粹是這頁預設要不要顯示。
+let campaignListShowEnded = false;
+
 async function renderCampaignsList() {
   loadingPage({ title: '預購檔期設定', back: 'more' });
 
@@ -1011,8 +1034,9 @@ async function renderCampaignsList() {
     return;
   }
 
-  const campaigns = campaignsData.campaigns || [];
+  const allCampaigns = campaignsData.campaigns || [];
   const orders = ordersData.orders || [];
+  const campaigns = (campaignListShowEnded ? allCampaigns : allCampaigns.filter(c => c.status !== 'ended')).slice().reverse();
 
   function orderedQty(campaignId) {
     return orders
@@ -1045,8 +1069,21 @@ async function renderCampaignsList() {
       <div class="topbar-title">預購檔期設定</div>
       <button class="topbar-action" data-nav="more/campaigns/new">+ 新增</button>
     </div>
-    <div class="page">${cards || `<div class="empty-state"><div class="icon">📅</div>目前沒有任何檔期</div>`}</div>
+    <div class="page">
+      <div class="chip-row">
+        <button class="chip ${!campaignListShowEnded ? 'active' : ''}" data-show-ended="false">進行中</button>
+        <button class="chip ${campaignListShowEnded ? 'active' : ''}" data-show-ended="true">全部（含已結束）</button>
+      </div>
+      ${cards || `<div class="empty-state"><div class="icon">📅</div>${campaignListShowEnded ? '目前沒有任何檔期' : '目前沒有進行中或即將開始的檔期'}</div>`}
+    </div>
   `);
+
+  root.querySelectorAll('[data-show-ended]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      campaignListShowEnded = btn.getAttribute('data-show-ended') === 'true';
+      renderCampaignsList();
+    });
+  });
 }
 
 async function renderCampaignEdit(id) {
