@@ -173,6 +173,7 @@ a { color: inherit; }
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   padding: 4px 14px 12px;
+  margin-bottom: 16px;
   box-shadow: 0 6px 16px -8px rgba(46, 38, 30, 0.25);
 }
 
