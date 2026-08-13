@@ -326,6 +326,7 @@ a { color: inherit; }
 
 .step {
   margin-bottom: 28px;
+  scroll-margin-top: calc(var(--safe-top) + var(--topinfo-h));
 }
 
 .back-btn {
