@@ -612,13 +612,13 @@ a { color: inherit; }
 }
 
 /* ---------- LINE 官方帳號連結 ---------- */
-/* 品牌色 #06C755 是 LINE 官方指定的識別色，圖示用通用對話泡泡造型（不是 LINE 商標本體），
-   如果要換成 LINE 官方素材下載頁的完整識別圖案，把這個 svg 換成下載回來的圖檔即可。 */
+/* 照 LINE 官方商標使用規範：不能仿製 LINE 的圖示/UI 按鈕造型（規範裡明確列為違規範例），
+   所以這裡只用純文字連結，不放任何仿商標圖案；背景色沿用官方指定的識別色 #06C755
+   （顏色本身不在禁止範圍，規範限制的是圖案/商標的仿製），文案套用規範 REFERENCE 章節
+   列出的正確用法（「加入 LINE 官方帳號」／「加入 LINE 好友」，避免用「加入 LINE」這種
+   不明確或「LINE@」這種已停用的服務名稱）。 */
 
 .line-badge {
-  display: flex;
-  align-items: center;
-  gap: 4px;
   flex-shrink: 0;
   background: #06C755;
   color: #fff;
@@ -630,10 +630,6 @@ a { color: inherit; }
 }
 
 .btn-line {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
   background: #06C755;
   color: #fff;
 }
