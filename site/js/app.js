@@ -659,9 +659,6 @@
     goToStepKey(steps[idx - 1]);
   }
 
-  document.querySelectorAll("[data-next]").forEach(function (btn) {
-    btn.addEventListener("click", goNext);
-  });
   document.querySelectorAll("[data-back]").forEach(function (btn) {
     btn.addEventListener("click", goBack);
   });
