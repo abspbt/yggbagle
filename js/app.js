@@ -1144,10 +1144,17 @@ async function renderCampaignEdit(id) {
         Api.get('/admin/campaigns'),
         Api.get('/admin/products'),
       ]);
+      // 找「最近一個有商品的檔期」當作沿用來源，不是單純抓最後建立的檔期——
+      // 老闆可能已經先建了空的檔期占位，那種檔期沒有商品可複製，往前找到有商品的才有意義。
       const campaigns = campaignsData.campaigns || [];
-      prevCampaign = campaigns.length ? campaigns[campaigns.length - 1] : null;
-      if (prevCampaign) {
-        prevCampaignProductCount = (productsData.products || []).filter(p => p.campaign_id === prevCampaign.campaign_id).length;
+      const products = productsData.products || [];
+      for (let i = campaigns.length - 1; i >= 0; i--) {
+        const count = products.filter(p => p.campaign_id === campaigns[i].campaign_id).length;
+        if (count > 0) {
+          prevCampaign = campaigns[i];
+          prevCampaignProductCount = count;
+          break;
+        }
       }
     }
   } catch (err) {
