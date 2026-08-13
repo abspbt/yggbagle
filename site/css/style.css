@@ -260,15 +260,16 @@ a { color: inherit; }
 
 .cart-actions {
   display: flex;
-  gap: 8px;
+  gap: 16px;
 }
 
-.cart-cta {
-  display: block;
+.cart-cta,
+.cart-back-btn {
   flex: 1;
-  background: var(--color-primary);
-  color: #fff;
-  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border-radius: 999px;
   padding: 10px 16px;
   font-size: 13px;
@@ -276,16 +277,31 @@ a { color: inherit; }
   text-align: center;
 }
 
-.cart-back-btn {
-  flex-shrink: 0;
-  background: var(--color-info-bg);
-  color: var(--color-text);
+.cart-cta {
+  background: var(--color-primary);
+  color: #fff;
   border: none;
-  border-radius: 999px;
-  padding: 10px 16px;
-  font-size: 13px;
-  font-weight: 700;
 }
+
+.cart-back-btn {
+  background: var(--color-card);
+  color: var(--color-primary-dark);
+  border: 1.5px solid var(--color-primary);
+}
+
+.cart-cta::after,
+.cart-back-btn::before {
+  content: "";
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+}
+
+.cart-cta::after { transform: rotate(-45deg); }
+
+.cart-back-btn::before { transform: rotate(135deg); }
 
 /* ---------- 分類頁籤（固定在購物車列下方，不隨捲動消失）---------- */
 
