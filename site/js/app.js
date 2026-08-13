@@ -22,6 +22,7 @@
     cartCount: document.getElementById("cart-count"),
     cartTotal: document.getElementById("cart-total"),
     cartNextBtn: document.getElementById("cart-next-btn"),
+    cartBackBtn: document.getElementById("cart-back-btn"),
     categoryTabs: document.getElementById("category-tabs"),
 
     stepProducts: document.getElementById("step-products"),
@@ -620,6 +621,7 @@
     updateStepTitles();
     updateCartBar();
     refreshTabsVisibility();
+    els.cartBackBtn.classList.toggle("hidden", key === "products");
     if (!opts || opts.scroll !== false) {
       stepSections[key].scrollIntoView({ behavior: "smooth", block: "start" });
     }
@@ -668,9 +670,7 @@
     goToStepKey(steps[idx - 1]);
   }
 
-  document.querySelectorAll("[data-back]").forEach(function (btn) {
-    btn.addEventListener("click", goBack);
-  });
+  els.cartBackBtn.addEventListener("click", goBack);
   els.cartNextBtn.addEventListener("click", goNext);
   window.addEventListener("resize", syncCartBarHeight);
   window.addEventListener("resize", syncTopInfoHeight);
