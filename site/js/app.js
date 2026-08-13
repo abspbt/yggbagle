@@ -50,6 +50,7 @@
 
     stepDone: document.getElementById("step-done"),
     doneOrderId: document.getElementById("done-order-id"),
+    doneCustomerInfo: document.getElementById("done-customer-info"),
     doneFulfillment: document.getElementById("done-fulfillment"),
     doneOrderItems: document.getElementById("done-order-items"),
     doneOrderTotal: document.getElementById("done-order-total"),
@@ -790,6 +791,11 @@
     syncCartBarHeight();
 
     els.doneOrderId.textContent = order.order_id;
+
+    els.doneCustomerInfo.innerHTML =
+      bankRow("姓名", order.customer_name) +
+      bankRow("電話", order.customer_phone) +
+      bankRow("備註", order.note);
 
     var fulfillment = fulfillmentSummaryText();
     els.doneFulfillment.textContent = fulfillment;
