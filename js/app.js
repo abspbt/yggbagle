@@ -659,6 +659,11 @@ async function renderOrderDetail(id) {
         ${canCancel ? `<button class="btn btn-danger" data-act="cancel-order">取消訂單</button>` : ''}
       </div>
       <div class="field-hint" style="text-align:left; margin-top:4px;">如需修改品項，請客戶取消後重新下單。</div>
+
+      <div class="section" style="margin-top:20px;">
+        <button class="btn btn-danger" data-act="delete-order">🗑️ 永久刪除此訂單</button>
+        <div class="field-hint" style="text-align:left; margin-top:4px;">跟「取消訂單」不一樣，這個動作會把訂單從資料表徹底移除，無法復原，通常用在測試訂單或輸入錯誤的情況。</div>
+      </div>
     </div>
   `);
 
@@ -694,6 +699,24 @@ async function renderOrderDetail(id) {
       danger: true,
       confirmText: '取消訂單',
       onConfirm: () => patchOrder({ order_status: 'cancelled' }, '訂單已取消'),
+    });
+  });
+  root.querySelector('[data-act="delete-order"]')?.addEventListener('click', () => {
+    showDialog({
+      title: '確定要永久刪除此訂單？',
+      body: `訂單 ${o.order_id} 連同品項明細會從資料表徹底移除，<strong>無法復原</strong>，跟「取消訂單」不一樣。確定要刪除嗎？`,
+      danger: true,
+      confirmText: '永久刪除',
+      onConfirm: async () => {
+        try {
+          await Api.del(`/orders/${encodeURIComponent(id)}`);
+          showToast('訂單已永久刪除');
+          navigate('orders');
+        } catch (err) {
+          if (err.isAuthError) { navigate('login'); return; }
+          showToast(err.message);
+        }
+      },
     });
   });
 }
