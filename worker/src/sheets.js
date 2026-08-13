@@ -113,3 +113,67 @@ export async function findRowByKey(accessToken, spreadsheetId, sheetName, keyCol
 
   return null;
 }
+
+// 跟 getSheetRows 一樣把整張表轉成物件陣列，但每個物件多帶一個 __rowNumber
+// （Sheets 上的實際列號），給需要之後刪除/覆寫特定列的呼叫端用（例如替換某檔期的取貨時段）。
+export async function getRowsWithNumbers(accessToken, spreadsheetId, sheetName) {
+  const values = await getValues(accessToken, spreadsheetId, sheetName);
+  if (values.length === 0) return [];
+
+  const [header, ...rows] = values;
+  return rows
+    .map((row, i) => ({ row, rowNumber: i + 2 }))
+    .filter(({ row }) => row.some((cell) => cell !== "" && cell !== undefined))
+    .map(({ row, rowNumber }) => {
+      const obj = { __rowNumber: rowNumber };
+      header.forEach((key, i) => {
+        obj[key] = row[i] !== undefined ? row[i] : "";
+      });
+      return obj;
+    });
+}
+
+// 刪除某張表裡指定的多列（rowNumbers 是 Sheets 上的實際列號，從 1 開始，含標題列）。
+// 用 batchUpdate 的 deleteDimension，需要先查該分頁的內部 sheetId（不是分頁名稱）。
+// 從最大的列號開始刪，避免同一批刪除時列號互相位移。
+export async function deleteRows(accessToken, spreadsheetId, sheetName, rowNumbers) {
+  if (!rowNumbers || rowNumbers.length === 0) return;
+
+  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`;
+  const metaRes = await fetch(metaUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!metaRes.ok) {
+    const text = await metaRes.text();
+    throw new Error(`讀取 Google Sheets 中繼資料失敗 (${metaRes.status}): ${text}`);
+  }
+  const meta = await metaRes.json();
+  const sheetMeta = (meta.sheets || []).find((s) => s.properties.title === sheetName);
+  if (!sheetMeta) {
+    throw new Error(`找不到分頁：${sheetName}`);
+  }
+  const sheetId = sheetMeta.properties.sheetId;
+
+  const requests = [...rowNumbers]
+    .sort((a, b) => b - a)
+    .map((rowNumber) => ({
+      deleteDimension: {
+        range: { sheetId, dimension: "ROWS", startIndex: rowNumber - 1, endIndex: rowNumber },
+      },
+    }));
+
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ requests }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`刪除 Google Sheets 資料失敗 (${res.status}): ${text}`);
+  }
+
+  return res.json();
+}

@@ -493,6 +493,95 @@ npm run deploy
 
 - 因為是 upsert，key 打錯字不會報錯、只會在 Sheets 裡多一列新的設定，要小心拼字——盡量用上表已經有的 key，不要自己發明新的
 
+## 老闆後台專用讀取／檔期管理 API（Phase 6 新增）
+
+老闆 PWA 這次串接真實 API，發現公開的 `GET /products`、`GET /campaigns` 只回傳「目前 active 檔期、上架中商品」，老闆商品管理頁／檔期設定頁需要看到全部資料（含已下架商品、已結束檔期），所以新增以下 endpoint，都需要登入（`Authorization: Bearer <token>`）。
+
+### `GET /admin/products`
+
+回傳**所有**商品，不篩選檔期狀態或上下架，格式跟 `GET /products` 一樣，多一個 `active` 欄位（布林值）。
+
+```json
+{
+  "ok": true,
+  "products": [
+    {
+      "product_id": "P001",
+      "campaign_id": "C001",
+      "name": "原味貝果（無餡）",
+      "category": "貝果",
+      "price": 45,
+      "max_per_order": 10,
+      "active": true,
+      "ordered_quantity": 12,
+      "variant_group": "",
+      "variant_label": ""
+    }
+  ]
+}
+```
+
+### `DELETE /products/:product_id`
+
+刪除商品。過去訂單的品項是存快照（`product_name_snapshot` 等），不會因為商品被刪除而受影響，所以這支不檢查商品有沒有被訂購過。找不到該 `product_id` 回 HTTP 404，成功回傳 `{ "ok": true }`。
+
+### `GET /admin/campaigns`
+
+回傳**所有**檔期（不分 `upcoming`/`active`/`ended`），格式跟 `GET /campaigns` 一樣。
+
+### `POST /campaigns`
+
+新增檔期，可以一次帶取貨時段陣列一起建立。
+
+```json
+{
+  "name": "8月第4週檔期",
+  "start_date": "2026-08-17",
+  "end_date": "2026-08-21",
+  "total_quantity_cap": 120,
+  "status": "upcoming",
+  "pickup_slots": [
+    { "date": "2026-08-23", "time_range": "14:00-18:00" }
+  ]
+}
+```
+
+- `name` 為必填，其他欄位可省略（`status` 預設 `upcoming`，必須是 `upcoming`/`active`/`ended` 其中之一，`pickup_slots` 預設空陣列）
+- 檔期編號自動產生，格式 `C001`、`C002`...；取貨時段編號 `S001`、`S002`...（不分檔期共用同一組編號，跟商品編號的做法一樣）
+- 成功回傳 HTTP 201，內容含 `pickup_slots`（帶著自動產生的 `slot_id`）
+
+### `PATCH /campaigns/:campaign_id`
+
+編輯檔期，只更新有帶到的欄位。
+
+```json
+{ "status": "active" }
+```
+
+```json
+{
+  "name": "8月第4週檔期（延後一週）",
+  "pickup_slots": [
+    { "date": "2026-08-30", "time_range": "14:00-18:00" }
+  ]
+}
+```
+
+- 如果請求裡帶了 `pickup_slots`（陣列，可以是空陣列 `[]`），這個檔期原本的取貨時段會**全部刪掉、換成新清單**（整批覆蓋，不是逐筆增刪）；沒帶這個欄位就不動取貨時段
+- 找不到該 `campaign_id` 回 HTTP 404，成功回傳更新後的完整檔期內容（含 `pickup_slots`）
+
+### `DELETE /campaigns/:campaign_id`
+
+刪除檔期（含底下的取貨時段），**只有這個檔期完全沒有任何訂單時才能刪除**（不分訂單狀態，取消的訂單也算）。有訂單的檔期請改用 `PATCH` 把 `status` 改成 `ended`（結束檔期）。
+
+擋下時回 HTTP 400：
+
+```json
+{ "ok": false, "error": "此檔期已有訂單，無法刪除，請改用「結束檔期」（PATCH status 改成 ended）" }
+```
+
+找不到該 `campaign_id` 回 HTTP 404，成功回傳 `{ "ok": true }`。
+
 ## PIN 登入 API（Phase 3-5）
 
 ### `POST /auth/login`
@@ -539,14 +628,14 @@ Token 是 Worker 自己用 `TOKEN_SECRET` 簽出來的一串「到期時間 + HM
 ## 檔案結構
 
 - `wrangler.toml`：Worker 設定（名稱、非機密環境變數）
-- `src/index.js`：Worker 進入點，包含讀取 API（`/api/test-sheets`、`/products`、`/campaigns`、`/settings`、`/orders` 的 GET）、寫入 API（`POST /orders`、`POST /products`、`PATCH /products/:id`、`PATCH /orders/:id`、`PATCH /settings`），以及 `POST /auth/login` PIN 登入
+- `src/index.js`：Worker 進入點，包含讀取 API（`/api/test-sheets`、`/products`、`/campaigns`、`/settings`、`/orders` 的 GET、`/admin/products`、`/admin/campaigns`）、寫入 API（`POST /orders`、`POST /products`、`PATCH /products/:id`、`DELETE /products/:id`、`POST /campaigns`、`PATCH /campaigns/:id`、`DELETE /campaigns/:id`、`PATCH /orders/:id`、`PATCH /settings`），以及 `POST /auth/login` PIN 登入
 - `src/auth.js`：老闆登入用的短期 token 簽發與驗證（HMAC-SHA256，純 Web Crypto API，無額外套件、不需要 D1/KV）
 - `src/googleAuth.js`：用 Service Account JSON 金鑰換 Google API access token（RS256 JWT 簽章，純 Web Crypto API，無額外套件）
-- `src/sheets.js`：呼叫 Google Sheets API 讀寫資料——`getSheetRows` 把整張表轉成物件陣列、`appendRows` 附加新列、`findRowByKey` 依欄位值找到某一列、`updateRow` 覆寫指定列
+- `src/sheets.js`：呼叫 Google Sheets API 讀寫資料——`getSheetRows` 把整張表轉成物件陣列、`getRowsWithNumbers` 是同一件事但每筆多帶 Sheets 上的實際列號、`appendRows` 附加新列、`findRowByKey` 依欄位值找到某一列、`updateRow` 覆寫指定列、`deleteRows` 刪除指定的多列（Phase 6 新增，給檔期／商品刪除用）
 - `.dev.vars.example`：本機測試環境變數範本（`.dev.vars` 本身已加進 `.gitignore`，不會被 commit）
 - `dashboard-single-file.js`：合併版程式碼，專門給不用終端機、直接在 Cloudflare Dashboard 網頁編輯器貼上部署用
 
 ## 下一步
 
-- 老闆後台 PWA 目前還沒有介面可以設定商品大小規格（`variant_group`／`variant_label`）、看訂單的取貨方式／運費／宅配地址，這些欄位這次先只在 Worker API 層做好，PWA 這幾頁要等 Phase 6（PWA 串接真實 API）才會一起處理
-- Phase 6 會把老闆 PWA 從假資料換成真的串接這裡的所有 API，包含 `POST /auth/login`
+- Phase 6：老闆後台 PWA 已從假資料改成真的串接這裡的所有 API，包含 `POST /auth/login`、商品大小規格設定（`variant_group`／`variant_label`）、訂單的取貨方式／運費／宅配地址顯示、檔期管理（新增 `/campaigns`、`/admin/campaigns`、`/admin/products` 系列 API）
+- **這次新增的 admin API 還沒部署**：要記得把更新後的 `dashboard-single-file.js` 貼到 Cloudflare Dashboard 網頁編輯器重新部署，PWA 才能正常運作（見上方「部署到 Cloudflare」章節）

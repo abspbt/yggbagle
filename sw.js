@@ -1,7 +1,7 @@
 // 歪嘴雞烘焙後台 PWA — Service Worker
 // 策略：cache-first + 背景更新（stale-while-revalidate）
 
-const CACHE_VERSION = 'v1.0.8';
+const CACHE_VERSION = 'v2.0.0';
 const CACHE_NAME = 'ykj-pwa-' + CACHE_VERSION;
 
 const PRECACHE_URLS = [
@@ -9,7 +9,7 @@ const PRECACHE_URLS = [
   './index.html',
   './manifest.json',
   './css/style.css',
-  './js/data.js',
+  './js/api.js',
   './js/app.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
