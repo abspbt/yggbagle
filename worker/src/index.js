@@ -129,8 +129,10 @@ function generateOrderId(existingOrders, dateCompact) {
 }
 
 // POST /orders：顧客下單，商品單價一律以 Sheets 上的 Products 資料為準，不採信前端傳來的價格。
-// 驗證項目：檔期是否開放、時段是否屬於這個檔期、單一商品是否超過 max_per_order、
+// 驗證項目：檔期是否開放、取貨方式對應欄位是否齊全（自取要有 pickup_slot_id 且時段屬於這個檔期，
+// 宅配要有 delivery_address）、單一商品是否超過 max_per_order、
 // 檔期總量（Campaigns.total_quantity_cap）是否還有餘量。
+// 宅配運費一律從 Settings.shipping_fee 讀取，不採信前端傳來的金額，跟商品價格同一套防呆邏輯。
 async function handleCreateOrder(request, env) {
   let body;
   try {
@@ -139,13 +141,31 @@ async function handleCreateOrder(request, env) {
     return json({ ok: false, error: "請求格式錯誤，需要 JSON" }, { status: 400 });
   }
 
-  const { campaign_id, customer_name, customer_phone, pickup_slot_id, note, items } = body || {};
+  const {
+    campaign_id,
+    customer_name,
+    customer_phone,
+    pickup_slot_id,
+    delivery_method,
+    delivery_address,
+    note,
+    items,
+  } = body || {};
 
-  if (!campaign_id || !customer_name || !customer_phone || !pickup_slot_id) {
+  // 沒帶 delivery_method 時預設 pickup，保持舊版顧客端（沒有宅配功能）的行為不變。
+  const deliveryMethod = delivery_method === "delivery" ? "delivery" : "pickup";
+
+  if (!campaign_id || !customer_name || !customer_phone) {
     return json(
-      { ok: false, error: "缺少必要欄位（campaign_id、customer_name、customer_phone、pickup_slot_id）" },
+      { ok: false, error: "缺少必要欄位（campaign_id、customer_name、customer_phone）" },
       { status: 400 }
     );
+  }
+  if (deliveryMethod === "pickup" && !pickup_slot_id) {
+    return json({ ok: false, error: "缺少必要欄位（pickup_slot_id）" }, { status: 400 });
+  }
+  if (deliveryMethod === "delivery" && !(typeof delivery_address === "string" && delivery_address.trim())) {
+    return json({ ok: false, error: "缺少必要欄位（delivery_address）" }, { status: 400 });
   }
   if (!Array.isArray(items) || items.length === 0) {
     return json({ ok: false, error: "訂單至少要有一項商品" }, { status: 400 });
@@ -153,12 +173,13 @@ async function handleCreateOrder(request, env) {
 
   const { accessToken, spreadsheetId } = await getAuthedContext(env);
 
-  const [campaigns, slots, products, existingOrders, existingOrderItems] = await Promise.all([
+  const [campaigns, slots, products, existingOrders, existingOrderItems, settingsRows] = await Promise.all([
     getSheetRows(accessToken, spreadsheetId, "Campaigns"),
     getSheetRows(accessToken, spreadsheetId, "PickupSlots"),
     getSheetRows(accessToken, spreadsheetId, "Products"),
     getSheetRows(accessToken, spreadsheetId, "Orders"),
     getSheetRows(accessToken, spreadsheetId, "Order_Items"),
+    getSheetRows(accessToken, spreadsheetId, "Settings"),
   ]);
 
   const campaign = campaigns.find((c) => c.campaign_id === campaign_id);
@@ -166,9 +187,11 @@ async function handleCreateOrder(request, env) {
     return json({ ok: false, error: "此檔期目前未開放預購" }, { status: 400 });
   }
 
-  const slot = slots.find((s) => s.slot_id === pickup_slot_id && s.campaign_id === campaign_id);
-  if (!slot) {
-    return json({ ok: false, error: "取貨時段不存在，或不屬於這個檔期" }, { status: 400 });
+  if (deliveryMethod === "pickup") {
+    const slot = slots.find((s) => s.slot_id === pickup_slot_id && s.campaign_id === campaign_id);
+    if (!slot) {
+      return json({ ok: false, error: "取貨時段不存在，或不屬於這個檔期" }, { status: 400 });
+    }
   }
 
   const productsById = new Map(products.map((p) => [p.product_id, p]));
@@ -228,9 +251,18 @@ async function handleCreateOrder(request, env) {
     }
   }
 
-  const total = orderItems.reduce((sum, item) => sum + item.subtotal, 0);
+  const settingsMap = {};
+  for (const row of settingsRows) {
+    if (row.setting_key) settingsMap[row.setting_key] = row.setting_value;
+  }
+  const shippingFee = deliveryMethod === "delivery" ? toNumber(settingsMap.shipping_fee) : 0;
+
+  const itemsSubtotal = orderItems.reduce((sum, item) => sum + item.subtotal, 0);
+  const total = itemsSubtotal + shippingFee;
   const { dateCompact, isoLocal } = nowInTaipei();
   const orderId = generateOrderId(existingOrders, dateCompact);
+  const pickupSlotIdValue = deliveryMethod === "pickup" ? pickup_slot_id : "";
+  const deliveryAddressValue = deliveryMethod === "delivery" ? delivery_address.trim() : "";
 
   await appendRows(accessToken, spreadsheetId, "Orders", [
     [
@@ -239,11 +271,14 @@ async function handleCreateOrder(request, env) {
       isoLocal,
       customer_name,
       customer_phone,
-      pickup_slot_id,
+      pickupSlotIdValue,
       total,
       "pending",
       "new",
       note || "",
+      deliveryMethod,
+      shippingFee,
+      deliveryAddressValue,
     ],
   ]);
 
@@ -270,7 +305,10 @@ async function handleCreateOrder(request, env) {
         created_at: isoLocal,
         customer_name,
         customer_phone,
-        pickup_slot_id,
+        pickup_slot_id: pickupSlotIdValue,
+        delivery_method: deliveryMethod,
+        shipping_fee: shippingFee,
+        delivery_address: deliveryAddressValue,
         total,
         payment_status: "pending",
         order_status: "new",
@@ -310,7 +348,7 @@ async function handleCreateProduct(request, env) {
     return json({ ok: false, error: "請求格式錯誤，需要 JSON" }, { status: 400 });
   }
 
-  const { campaign_id, name, category, price, max_per_order, active } = body || {};
+  const { campaign_id, name, category, price, max_per_order, active, variant_group, variant_label } = body || {};
 
   if (!campaign_id || !name) {
     return json({ ok: false, error: "缺少必要欄位（campaign_id、name）" }, { status: 400 });
@@ -322,7 +360,17 @@ async function handleCreateProduct(request, env) {
   const isProductActive = active === undefined ? true : toBool(active);
 
   await appendRows(accessToken, spreadsheetId, "Products", [
-    [productId, campaign_id, name, category || "", toNumber(price), toNumber(max_per_order), isProductActive],
+    [
+      productId,
+      campaign_id,
+      name,
+      category || "",
+      toNumber(price),
+      toNumber(max_per_order),
+      isProductActive,
+      variant_group || "",
+      variant_label || "",
+    ],
   ]);
 
   return json(
@@ -336,6 +384,8 @@ async function handleCreateProduct(request, env) {
         price: toNumber(price),
         max_per_order: toNumber(max_per_order),
         active: isProductActive,
+        variant_group: variant_group || "",
+        variant_label: variant_label || "",
       },
     },
     { status: 201 }
@@ -371,6 +421,8 @@ async function handleUpdateProduct(request, env, productId) {
   if (body.price !== undefined) updated.price = toNumber(body.price);
   if (body.max_per_order !== undefined) updated.max_per_order = toNumber(body.max_per_order);
   if (body.active !== undefined) updated.active = toBool(body.active);
+  if (body.variant_group !== undefined) updated.variant_group = body.variant_group;
+  if (body.variant_label !== undefined) updated.variant_label = body.variant_label;
 
   await updateRow(
     accessToken,
@@ -390,6 +442,8 @@ async function handleUpdateProduct(request, env, productId) {
       price: toNumber(updated.price),
       max_per_order: toNumber(updated.max_per_order),
       active: isActive(updated.active),
+      variant_group: updated.variant_group || "",
+      variant_label: updated.variant_label || "",
     },
   });
 }
@@ -451,6 +505,9 @@ async function handleUpdateOrder(request, env, orderId) {
       customer_name: updated.customer_name,
       customer_phone: updated.customer_phone,
       pickup_slot_id: updated.pickup_slot_id,
+      delivery_method: updated.delivery_method || "pickup",
+      shipping_fee: toNumber(updated.shipping_fee),
+      delivery_address: updated.delivery_address || "",
       total: toNumber(updated.total),
       payment_status: updated.payment_status,
       order_status: updated.order_status,
@@ -582,6 +639,8 @@ async function handleProducts(env) {
       price: toNumber(p.price),
       max_per_order: toNumber(p.max_per_order),
       ordered_quantity: orderedQtyByProduct[p.product_id] || 0,
+      variant_group: p.variant_group || "",
+      variant_label: p.variant_label || "",
     }));
 
   return json({ ok: true, products: list });
@@ -615,6 +674,9 @@ async function handleOrders(env) {
       customer_name: o.customer_name,
       customer_phone: o.customer_phone,
       pickup_slot_id: o.pickup_slot_id,
+      delivery_method: o.delivery_method || "pickup",
+      shipping_fee: toNumber(o.shipping_fee),
+      delivery_address: o.delivery_address || "",
       total: toNumber(o.total),
       payment_status: o.payment_status,
       order_status: o.order_status,

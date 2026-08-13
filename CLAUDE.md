@@ -12,7 +12,13 @@
 - ✅ Phase 3-5：PIN 登入 + 短期 Token 驗證機制（已完成，見下方備註，**Phase 3 全部完成**）
 - ✅ Phase 4：顧客預購網站前端（已完成，見下方備註）
 - ✅ Phase 5：預購總量上限控制邏輯（已完成，見下方備註）
-- ⏭️ 下一步：Phase 6（PWA 串接真實 API）
+- ✅ 顧客介面改版（前端 + 後端都已完成，見下方備註）：設計已定案（詳見
+  `HANDOFF_CUSTOMER_UI.md`），前端 4 個 commit + 後端 Google Sheets 表結構／
+  Worker API 都已完成並部署，分支：`claude/yggbagle-site-ui-updates-hhavht`
+  （尚未併回 main）
+- ⏭️ 下一步：評估老闆後台 PWA 要不要跟著連動（商品管理頁要能設定大小規格、
+  訂單列表頁要顯示取貨方式/運費/宅配地址），之後把這個分支併回 main，
+  再開始 Phase 6（PWA 串接真實 API）
 
 **Phase 3-1 備註**：
 - 已建立 Google Cloud Service Account，金鑰以「秘密」類型設定在 Cloudflare Dashboard 的 Worker 環境變數（`SPREADSHEET_ID`、`GOOGLE_SERVICE_ACCOUNT_KEY`），沒有寫進程式碼或 repo
@@ -70,6 +76,29 @@
 - 前端 `site/js/app.js` 不用改，本來就會把 API 回傳的 `error` 訊息直接顯示在送出按鈕下方
 - `worker/src/index.js`、`worker/dashboard-single-file.js`、`worker/README.md` 都已同步更新，已透過 Cloudflare Dashboard 網頁編輯器部署並併入 `main`（PR #12，同時併入了原本卡著沒併的 Phase 4）
 - 開發時發現 Phase 4 的分支 `claude/new-session-r689do` 當時還沒併入 `main`，這次 Phase 5 分支是接在 Phase 4 分支上做的，PR #12 一次把 Phase 4 + Phase 5 都併進 `main` 了
+
+**顧客介面改版備註**（分支 `claude/yggbagle-site-ui-updates-hhavht`，尚未併回 `main`）：
+- 前端（4 個 commit）：品牌識別區、購物車列改固定在上方（可展開/收合）、分類頁籤、
+  大/小規格商品卡（依 `variant_group`/`variant_label` 分組）、新增「選自取／宅配」步驟
+  （宅配改填收件地址、跳過選時段，運費讀 `Settings.shipping_fee`）、每個步驟加「‹ 上一頁」、
+  完成頁加訂購明細卡片、換上真實店家 logo、完成頁「複製文字明細」按鈕（固定只做複製文字這件事，
+  不依裝置切換行為）
+- 後端：Google Sheets 新增欄位——`Products` 加 `variant_group`、`variant_label`；`Orders` 加
+  `delivery_method`、`shipping_fee`、`delivery_address`；`Settings` 新增一列
+  `shipping_fee`（都加在原本欄位最右邊，避免打亂 `訂單查詢`/`月報表`公式）
+- Worker API 同步更新：`POST /orders` 依 `delivery_method` 分流驗證（自取要
+  `pickup_slot_id`，宅配要 `delivery_address`），宅配運費一律從 `Settings.shipping_fee`
+  讀取、不採信前端金額，`order.total` 直接回傳含運費的最終金額；`GET`/`POST /products`、
+  `PATCH /products/:id` 讀寫大小規格欄位；`GET`/`PATCH /orders` 回應含取貨方式/運費/宅配地址
+- 前端 `site/js/app.js` 的 `showDone()` 已改用後端回傳的 `order.total`/`order.shipping_fee`，
+  拿掉舊版「前端自己再加一次運費」的邏輯，避免重複計算
+- `worker/src/index.js`、`worker/dashboard-single-file.js`、`worker/README.md` 都已同步更新，
+  已透過 Cloudflare Dashboard 網頁編輯器部署
+- Phase 5 的總量上限檢查邏輯不用改：大/小規格商品在 Sheets 裡本來就是不同
+  `product_id`、不同列，天生就各自獨立算
+- 老闆已手動在 Google Sheets 加好上述欄位，並完成 Cloudflare Dashboard 重新部署
+- **這次 session 沒有動老闆後台 PWA**：商品管理頁要能設定大小規格、訂單列表頁要顯示
+  取貨方式/運費/宅配地址，留給下一步評估
 
 Phase 0 各頁 Wireframe 定案內容已整理成交接摘要，見對話紀錄
 （今日 Dashboard、商品管理、訂單列表+付款確認、公告設定、

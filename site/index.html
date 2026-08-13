@@ -6,16 +6,35 @@
 <title>歪嘴雞烘焙｜線上預購</title>
 <meta name="description" content="歪嘴雞烘焙預購系統｜手工窯烤麵包線上預購">
 <meta name="theme-color" content="#D97B3F">
+<link rel="icon" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 <div id="app">
-  <header class="site-header">
-    <h1 id="shop-name">歪嘴雞烘焙</h1>
-    <p id="shop-intro" class="muted"></p>
-  </header>
+  <div class="brand-header">
+    <img class="brand-logo" src="assets/logo.jpg" alt="歪嘴雞烘焙 Logo">
+    <div>
+      <p id="shop-name" class="brand-name">歪嘴雞烘焙</p>
+      <p id="shop-intro" class="brand-sub"></p>
+    </div>
+  </div>
 
   <div id="announcement" class="announcement hidden"></div>
+
+  <div id="cart-summary" class="cart-summary hidden">
+    <details id="cart-details" class="cart-details">
+      <summary class="cart-summary-row">
+        <span class="cart-icon">🛒</span>
+        <span class="cart-text">已選 <span id="cart-count">0</span> 件<span class="amount">合計 <span id="cart-total">NT$ 0</span></span></span>
+        <span class="chevron">▾</span>
+      </summary>
+      <div id="cart-detail-list" class="cart-detail-list"></div>
+    </details>
+    <button id="cart-next-btn" class="cart-cta" type="button">下一步</button>
+  </div>
+
+  <div id="category-tabs" class="tabs hidden"></div>
 
   <main id="main" aria-live="polite">
     <div id="loading" class="state-block">
@@ -41,21 +60,60 @@
       <button id="retry-btn" class="btn btn-secondary">重新整理</button>
     </div>
 
-    <!-- Step 1：選商品 -->
+    <!-- Step：選商品 -->
     <section id="step-products" class="step hidden">
-      <h2 class="step-title">1. 選商品</h2>
+      <h2 id="step-products-title" class="step-title">選商品</h2>
       <div id="product-list" class="product-list"></div>
     </section>
 
-    <!-- Step 2：選取貨時段 -->
-    <section id="step-slot" class="step hidden">
-      <h2 class="step-title">2. 選取貨時段</h2>
-      <div id="slot-list" class="slot-list"></div>
+    <!-- Step：選取貨方式 -->
+    <section id="step-delivery" class="step hidden">
+      <button type="button" class="back-btn" data-back>‹ 上一頁</button>
+      <h2 id="step-delivery-title" class="step-title">選擇取貨方式</h2>
+      <div id="delivery-options" class="delivery-options">
+        <label class="delivery-card" data-delivery-option="pickup">
+          <input type="radio" name="delivery_method" value="pickup">
+          <span class="delivery-icon">🏠</span>
+          <span class="delivery-text">
+            <span class="delivery-name">自取</span>
+            <span class="delivery-sub">至店取貨，免運費</span>
+          </span>
+        </label>
+        <label class="delivery-card" data-delivery-option="delivery">
+          <input type="radio" name="delivery_method" value="delivery">
+          <span class="delivery-icon">🚚</span>
+          <span class="delivery-text">
+            <span class="delivery-name">低溫宅配</span>
+            <span id="delivery-fee-sub" class="delivery-sub">運費另計</span>
+          </span>
+        </label>
+      </div>
+      <button type="button" class="btn btn-primary" data-next>下一步</button>
     </section>
 
-    <!-- Step 3：填資料 -->
+    <!-- Step：選取貨時段（選自取才會走到這裡） -->
+    <section id="step-slot" class="step hidden">
+      <button type="button" class="back-btn" data-back>‹ 上一頁</button>
+      <h2 id="step-slot-title" class="step-title">選取貨時段</h2>
+      <div id="slot-list" class="slot-list"></div>
+      <button type="button" class="btn btn-primary" data-next>下一步</button>
+    </section>
+
+    <!-- Step：填收件地址（選宅配才會走到這裡） -->
+    <section id="step-address" class="step hidden">
+      <button type="button" class="back-btn" data-back>‹ 上一頁</button>
+      <h2 id="step-address-title" class="step-title">填寫收件地址</h2>
+      <label class="field">
+        <span>收件地址</span>
+        <input type="text" id="delivery-address" name="delivery_address" placeholder="請輸入宅配收件地址（含郵遞區號）">
+      </label>
+      <button type="button" class="btn btn-primary" data-next>下一步</button>
+    </section>
+
+    <!-- Step：填資料 -->
     <section id="step-form" class="step hidden">
-      <h2 class="step-title">3. 填寫聯絡資訊</h2>
+      <button type="button" class="back-btn" data-back>‹ 上一頁</button>
+      <h2 id="step-form-title" class="step-title">填寫聯絡資訊</h2>
       <form id="order-form">
         <label class="field">
           <span>姓名</span>
@@ -70,10 +128,12 @@
           <textarea id="customer-note" name="note" rows="2" placeholder="有其他需求可以寫在這裡"></textarea>
         </label>
       </form>
+      <button type="button" class="btn btn-primary" data-next>下一步</button>
     </section>
 
     <!-- 訂單摘要 + 送出 -->
     <section id="step-summary" class="step hidden">
+      <button type="button" class="back-btn" data-back>‹ 上一頁</button>
       <h2 class="step-title">訂單摘要</h2>
       <div id="summary-items" class="summary-items"></div>
       <div class="summary-total">
@@ -93,23 +153,34 @@
         <p id="done-order-id" class="done-order-id"></p>
         <button id="copy-order-id" class="btn btn-secondary btn-small">複製訂單編號</button>
       </div>
+      <div class="done-card done-card-detail">
+        <p class="done-label">訂購明細</p>
+        <p id="done-fulfillment" class="done-meta"></p>
+        <div id="done-order-items" class="summary-items"></div>
+        <div class="summary-total">
+          <span>總計</span>
+          <span id="done-order-total">NT$ 0</span>
+        </div>
+      </div>
+      <div class="done-card save-steps">
+        <p class="done-label">避免忘記訂了什麼，建議照著做</p>
+        <ol class="save-steps-list">
+          <li><span class="save-step-num">1</span><span>截圖：先把這個畫面截圖起來，方便自己知道買了什麼</span></li>
+          <li><span class="save-step-num">2</span><span>複製文字明細：點下面按鈕，把明細複製成文字</span></li>
+          <li><span class="save-step-num">3</span><span>傳送給老闆：打開 LINE，貼上剛剛複製的文字傳給我們，方便之後核對</span></li>
+        </ol>
+        <button id="save-share-btn" type="button" class="btn btn-secondary">📋 複製文字明細</button>
+        <p id="save-share-status" class="done-meta hidden"></p>
+      </div>
+      <a id="done-line-link" class="btn btn-primary" href="#" target="_blank" rel="noopener">開啟 LINE 傳送給老闆</a>
       <div class="done-card">
         <p class="done-label">請匯款至</p>
         <div id="done-bank-info" class="bank-info"></div>
       </div>
-      <p class="done-hint">請完成匯款後，將截圖傳到 LINE 讓我們確認，謝謝您的預購！</p>
-      <a id="done-line-link" class="btn btn-primary" href="#" target="_blank" rel="noopener">前往 LINE 傳送截圖</a>
+      <p class="done-hint">完成匯款後，麻煩把匯款截圖也傳到剛剛那個 LINE 對話讓我們確認，謝謝您的預購！</p>
       <button id="restart-btn" class="btn btn-secondary">再訂購一筆</button>
     </section>
   </main>
-
-  <div id="cart-bar" class="cart-bar hidden">
-    <div class="cart-bar-info">
-      <span id="cart-count">0 項</span>
-      <span id="cart-total">NT$ 0</span>
-    </div>
-    <button id="cart-next-btn" class="btn btn-primary btn-small">下一步</button>
-  </div>
 </div>
 <script src="js/app.js"></script>
 </body>
