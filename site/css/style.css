@@ -313,6 +313,16 @@ a { color: inherit; }
   margin: 0 0 12px;
 }
 
+.done-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 20px;
+  line-height: 1;
+  text-align: center;
+}
+
 .step {
   margin-bottom: 28px;
 }
