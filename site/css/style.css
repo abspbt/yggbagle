@@ -203,13 +203,20 @@ a { color: inherit; }
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: var(--color-bg);
-  font-size: 13px;
-  color: var(--color-primary-dark);
   transition: transform 0.15s ease;
+}
+
+.cart-summary-row .chevron::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-right: 2.5px solid var(--color-primary-dark);
+  border-bottom: 2.5px solid var(--color-primary-dark);
+  transform: translateY(-2px) rotate(45deg);
 }
 
 .cart-details[open] .chevron { transform: rotate(180deg); }
