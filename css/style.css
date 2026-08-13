@@ -106,26 +106,6 @@ a { color: inherit; text-decoration: none; }
   flex-shrink: 0;
 }
 
-.topbar-refresh {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  font-size: 20px;
-  color: var(--color-primary);
-  flex-shrink: 0;
-}
-.topbar-refresh:active { background: var(--color-info-bg); }
-.topbar-refresh:disabled { opacity: 0.6; }
-.topbar-refresh.spinning { animation: spin 0.7s linear infinite; }
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
 /* ---------- Page content ---------- */
 .page {
   padding: 4px 16px 24px;

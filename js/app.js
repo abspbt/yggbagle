@@ -367,7 +367,7 @@ async function renderDashboard() {
 
   setContent(`
     <div class="topbar">
-      <div class="brand-row" style="margin-bottom:0; flex:1; min-width:0;">
+      <div class="brand-row" style="margin-bottom:0;">
         <div class="brand-logo"><img src="icons/logo.png" alt="${escapeHtml(shopName)}"></div>
         <div>
           <div class="brand-name">${escapeHtml(shopName)}</div>
@@ -377,9 +377,9 @@ async function renderDashboard() {
           </div>
         </div>
       </div>
-      <button class="topbar-refresh" data-act="refresh" aria-label="重新整理" title="重新整理">↻</button>
     </div>
     <div class="page">
+      <button class="btn btn-outline" id="btn-refresh" data-act="refresh" style="margin-bottom:14px;">檢查新訂單</button>
       <div class="section">
         <div class="section-title">今日摘要</div>
         <div class="summary-grid">
@@ -440,13 +440,13 @@ async function renderDashboard() {
   root.querySelector('[data-act="refresh"]').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     btn.disabled = true;
-    btn.classList.add('spinning');
+    btn.textContent = '檢查中…';
     try {
       await renderDashboard();
-      showToast('已重新整理');
+      showToast('已檢查最新訂單');
     } finally {
       btn.disabled = false;
-      btn.classList.remove('spinning');
+      btn.textContent = '檢查新訂單';
     }
   });
 }
