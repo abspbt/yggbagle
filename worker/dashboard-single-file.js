@@ -609,7 +609,7 @@ async function handleCreateOrder(request, env) {
       campaign_id,
       isoLocal,
       customer_name,
-      customer_phone,
+      `'${customer_phone}`,
       pickupSlotIdValue,
       total,
       "pending",
