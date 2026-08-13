@@ -782,14 +782,16 @@
         "</span>";
       els.doneOrderItems.appendChild(row);
     });
-    var fee = state.deliveryMethod === "delivery" ? shippingFee() : 0;
+    // 後端 order.total 已經是商品小計 + 運費的最終金額（shipping_fee 是後端從 Settings
+    // 讀到的運費，不是前端自己算的），這裡不用再加一次運費。
+    var fee = Number(order.shipping_fee) || 0;
     if (fee > 0) {
       var feeRow = document.createElement("div");
       feeRow.className = "summary-row fee";
       feeRow.innerHTML = "<span>低溫宅配運費</span><span>" + money(fee) + "</span>";
       els.doneOrderItems.appendChild(feeRow);
     }
-    var grandTotal = (order.total || 0) + fee;
+    var grandTotal = order.total || 0;
     els.doneOrderTotal.textContent = money(grandTotal);
 
     state.lastOrder = {

@@ -152,6 +152,48 @@ npm run deploy
 > npx wrangler secret put SPREADSHEET_ID
 > ```
 
+## 商品大小規格／宅配運費（顧客介面改版新增，需要老闆手動改 Google Sheets）
+
+顧客網站改版後多了「大小規格商品卡」跟「自取／宅配」流程，Worker 程式碼已經改好，但 **Google Sheets 上的欄位要老闆自己手動加**（Worker 沒有自動改表結構的功能）。以下是要加的欄位，**都加在每張表現有欄位的最右邊**，這樣才不會把 `訂單查詢`、`月報表` 分頁裡用欄位字母（例如 `Orders!C:C`）寫的公式對錯位置。
+
+### `Products` 分頁：新增兩欄
+
+在最後一欄（`active`）右邊，依序新增：
+
+| 新欄位 | 說明 |
+|---|---|
+| `variant_group` | 同一組大/小規格的商品，這欄填一樣的值（例如兩顆商品都填 `V001`）；沒有大小規格的商品留空白 |
+| `variant_label` | 顯示在商品卡上的規格文字，例如「大　5顆/袋」、「小　8顆/袋」；沒有大小規格的商品留空白 |
+
+老闆後台的商品管理頁目前還沒有介面可以填這兩欄（PWA 要等 Phase 6 才會做），這次先直接在 Google Sheets 手動輸入，或用 `POST /products`／`PATCH /products/:id` 這兩支 API 帶 `variant_group`／`variant_label` 欄位設定（見下方「老闆端寫入 API」）。
+
+### `Orders` 分頁：新增三欄
+
+在最後一欄（`note`）右邊，依序新增：
+
+| 新欄位 | 說明 |
+|---|---|
+| `delivery_method` | `pickup`（自取）或 `delivery`（宅配），`POST /orders` 建立訂單時會自動填 |
+| `shipping_fee` | 這筆訂單實際收取的運費金額（自取是 0），`POST /orders` 會自動算好填入 |
+| `delivery_address` | 宅配收件地址，自取訂單這欄是空白 |
+
+這三欄都是 Worker 寫訂單時自動帶入，不用老闆手動填，但欄位標題列要先手動加好，不然 `POST /orders` 寫入時會對不到位置。
+
+### `Settings` 分頁：新增一列資料
+
+在 `Settings` 分頁（欄位是 `setting_key`／`setting_value`）新增一列：
+
+| setting_key | setting_value |
+|---|---|
+| `shipping_fee` | 宅配運費金額（純數字，例如 `150`） |
+
+可以直接在 Google Sheets 手動新增這一列，或用 `PATCH /settings` 帶 `{"shipping_fee": 150}` 讓 Worker 自動新增/更新（見下方「老闆端寫入 API」）。這個 key 沒有設定時，顧客網站的宅配運費會顯示 NT$0。
+
+### 改完之後要檢查的地方
+
+- `訂單查詢`、`月報表` 分頁如果是用「整欄」（例如 `Orders!C:C`）或固定欄位字母寫公式，加在最右邊的新欄位不會影響到既有公式；但如果公式裡有算「這一列到最後一欄」這種寫法，改完要重新打開檢查一下數字對不對
+- `POST /products`、`POST /orders` 這兩支 API 是照欄位順序寫入 Sheets（不是照欄位名稱對應），**新欄位一定要加在最右邊**，不能插在中間，不然會寫錯欄位
+
 ## 讀取 API（Phase 3-2）
 
 三個 endpoint 都是 `GET`，不需要帶任何參數，回傳格式都是 `{"ok": true, ...}`；失敗時是 `{"ok": false, "error": "..."}`（HTTP 狀態碼會是 4xx/5xx）。
@@ -183,6 +225,8 @@ npm run deploy
 
 回傳目前 active 檔期、且上架中（`active` 勾選）的商品。`ordered_quantity` 是即時從 `Order_Items` 加總算出來的已訂購量（只算該商品所屬檔期、且訂單狀態不是 `cancelled` 的訂單），**不是**存在 Sheets 裡的欄位，延續 Phase 2 「不存彙總欄位」的原則。
 
+`variant_group`／`variant_label` 是顧客介面改版新增的大小規格欄位（見下方「商品大小規格（`Products` 新增欄位）」），沒有設定時回傳空字串 `""`。
+
 ```json
 {
   "ok": true,
@@ -194,7 +238,9 @@ npm run deploy
       "category": "貝果",
       "price": 45,
       "max_per_order": 10,
-      "ordered_quantity": 12
+      "ordered_quantity": 12,
+      "variant_group": "",
+      "variant_label": ""
     }
   ]
 }
@@ -219,13 +265,15 @@ npm run deploy
     "announcement_text": "本週六預購開放中！",
     "announcement_visible": "TRUE",
     "preorder_open": "TRUE",
-    "pause_message": "目前暫停接單，恢復時間將於粉絲頁公告，謝謝您的支持！"
+    "pause_message": "目前暫停接單，恢復時間將於粉絲頁公告，謝謝您的支持！",
+    "shipping_fee": "150"
   }
 }
 ```
 
 - 老闆用 `PATCH /settings`（需登入）改的值，這支馬上就會讀到最新的
 - `announcement_visible`、`preorder_open` 是文字 `"TRUE"`/`"FALSE"`（跟 Sheets 資料驗證下拉選單的值一致），前端要自己轉成布林值判斷
+- `shipping_fee`（顧客介面改版新增）：宅配運費金額，沒有設定這個 key 時不會出現在回應裡，前端會當作 0
 
 ### `GET /orders`
 
@@ -244,6 +292,9 @@ npm run deploy
       "customer_name": "王小明",
       "customer_phone": "0912345678",
       "pickup_slot_id": "S001",
+      "delivery_method": "pickup",
+      "shipping_fee": 0,
+      "delivery_address": "",
       "total": 450,
       "payment_status": "pending",
       "order_status": "new",
@@ -256,19 +307,22 @@ npm run deploy
 }
 ```
 
+`delivery_method`／`shipping_fee`／`delivery_address` 是顧客介面改版新增的欄位，`pickup_slot_id` 在宅配訂單會是空字串，`delivery_address` 在自取訂單會是空字串。
+
 ## 寫入 API（Phase 3-3）
 
 ### `POST /orders`
 
-顧客下單用，建立一筆訂單（同時寫入 `Orders` 和 `Order_Items` 兩張表）。
+顧客下單用，建立一筆訂單（同時寫入 `Orders` 和 `Order_Items` 兩張表）。取貨方式分兩種，`delivery_method` 決定要帶哪些欄位：
 
-**請求範例**：
+**自取（`pickup`，或沒帶 `delivery_method` 時的預設值）**：
 
 ```json
 {
   "campaign_id": "C001",
   "customer_name": "王小明",
   "customer_phone": "0912345678",
+  "delivery_method": "pickup",
   "pickup_slot_id": "S001",
   "note": "麻煩切半",
   "items": [
@@ -278,13 +332,30 @@ npm run deploy
 }
 ```
 
-- `campaign_id`、`customer_name`、`customer_phone`、`pickup_slot_id`、`items` 為必填，`items` 至少要有一筆，`note` 可省略
+**宅配（`delivery`）**：
+
+```json
+{
+  "campaign_id": "C001",
+  "customer_name": "王小明",
+  "customer_phone": "0912345678",
+  "delivery_method": "delivery",
+  "delivery_address": "台中市西區美村路一段123號",
+  "items": [
+    { "product_id": "P001", "quantity": 2 }
+  ]
+}
+```
+
+- `campaign_id`、`customer_name`、`customer_phone`、`items` 一律必填，`items` 至少要有一筆，`note` 可省略
+- `delivery_method` 是 `pickup` 時要帶 `pickup_slot_id`；是 `delivery` 時要帶非空白的 `delivery_address`；沒帶 `delivery_method` 時當作 `pickup`（保留舊版顧客端相容）
 - 商品單價一律以 Sheets 上 `Products` 分頁當下的資料為準，**不採信前端傳來的價格**，避免被竄改
-- 會檢查：檔期是否為 `active`、取貨時段是否屬於這個檔期、商品是否存在／上架、單一商品數量是否超過該商品的 `max_per_order`
+- 會檢查：檔期是否為 `active`、自取時段是否屬於這個檔期、商品是否存在／上架、單一商品數量是否超過該商品的 `max_per_order`
+- **宅配運費**：`delivery_method` 是 `delivery` 時，一律從 `Settings.shipping_fee` 讀取金額加進 `total`，**不採信前端傳來的金額**，跟商品價格同一套防呆邏輯；自取訂單的運費是 0
 - **檔期總量上限（`Campaigns.total_quantity_cap`，Phase 5 新增）**：把這個檔期所有「未取消」訂單的 `Order_Items` 數量加總，加上這筆新訂單要訂的數量，超過 `total_quantity_cap` 就擋下，回傳 HTTP 400。`total_quantity_cap` 是 0（或空白）代表不限制，不會做這項檢查
   - 擋下時的錯誤訊息會附上剩餘可訂數量，例如：`本檔期預購已達上限，剩餘 3 份，訂單需求 5 份，請減少數量後再試`；剩餘 0 份時顯示「本檔期預購已額滿，請等待下一檔期」
   - 這是「讀了再寫」的簡單檢查，不是原子鎖——跟訂單編號流水號一樣的取捨，極端情況下（幾乎同時送出兩張訂單）可能多接一兩份，老闆手動調整即可
-  - 目前總量上限是「整個檔期共用一個上限」，不是每個取貨時段各自獨立算（`PickupSlots` 表沒有各時段自己的上限欄位）
+  - 目前總量上限是「整個檔期共用一個上限」，不是每個取貨時段各自獨立算（`PickupSlots` 表沒有各時段自己的上限欄位）；大/小規格商品在 Sheets 裡本來就是不同 `product_id`、不同列，天生就各自獨立算，不受這次改動影響
 - 訂單編號格式 `ORD-YYYYMMDD-XXXX`（西元年月日 + 當天流水號，從 `0001` 開始），日期以台北時區計算
 - 這是簡單的「讀了再寫」（讀 `Orders` 找當天最大流水號 +1），不是原子操作——極端情況下（幾乎同時送出兩張訂單）理論上有極低機率撞號，跟總量控制走一樣的取捨（老闆手動處理即可），不做額外的鎖
 
@@ -299,23 +370,31 @@ npm run deploy
     "created_at": "2026-08-12T14:05:00+08:00",
     "customer_name": "王小明",
     "customer_phone": "0912345678",
-    "pickup_slot_id": "S001",
-    "total": 135,
+    "pickup_slot_id": "",
+    "delivery_method": "delivery",
+    "shipping_fee": 150,
+    "delivery_address": "台中市西區美村路一段123號",
+    "total": 240,
     "payment_status": "pending",
     "order_status": "new",
-    "note": "麻煩切半",
+    "note": "",
     "items": [
-      { "product_id": "P001", "product_name": "原味貝果（無餡）", "unit_price": 45, "quantity": 2, "subtotal": 90 },
-      { "product_id": "P002", "product_name": "巧克力貝果（有餡）", "unit_price": 45, "quantity": 1, "subtotal": 45 }
+      { "product_id": "P001", "product_name": "原味貝果（無餡）", "unit_price": 45, "quantity": 2, "subtotal": 90 }
     ]
   }
 }
 ```
 
-**失敗回應**（HTTP 400，例如檔期未開放、商品已下架、超過 `max_per_order`、超過檔期總量上限等）：
+`total` 是商品小計加運費的最終金額（前端可以直接用這個數字顯示，不用自己再加一次運費）；自取訂單的 `shipping_fee` 是 `0`、`delivery_address` 是空字串，宅配訂單的 `pickup_slot_id` 是空字串。
+
+**失敗回應**（HTTP 400，例如檔期未開放、商品已下架、缺少 `delivery_address`、超過 `max_per_order`、超過檔期總量上限等）：
 
 ```json
 { "ok": false, "error": "此檔期目前未開放預購" }
+```
+
+```json
+{ "ok": false, "error": "缺少必要欄位（delivery_address）" }
 ```
 
 ```json
@@ -337,17 +416,20 @@ npm run deploy
   "category": "貝果",
   "price": 55,
   "max_per_order": 5,
-  "active": true
+  "active": true,
+  "variant_group": "V001",
+  "variant_label": "大　5顆/袋"
 }
 ```
 
 - `campaign_id`、`name` 為必填，其他欄位可省略（`active` 預設 `true`）
+- `variant_group`／`variant_label`（顧客介面改版新增）：同一組大/小規格的商品要填一樣的 `variant_group`，`variant_label` 是顯示在卡片上的規格文字（例如「大　5顆/袋」）；沒有大小規格的單一商品不用帶這兩個欄位
 - 商品編號自動產生，格式 `P001`、`P002`...，取現有商品裡最大編號 +1（不分檔期，跨檔期共用同一組編號）
 - 成功回傳 HTTP 201，內容跟 `GET /products` 裡單筆商品的格式一樣（多一個 `product_id`）
 
 ### `PATCH /products/:product_id`
 
-編輯商品，例如上下架切換、改價格。只有請求裡帶到的欄位會被更新，其他欄位維持原樣。
+編輯商品，例如上下架切換、改價格、設定大小規格。只有請求裡帶到的欄位會被更新，其他欄位維持原樣。
 
 ```json
 { "active": false }
@@ -355,6 +437,10 @@ npm run deploy
 
 ```json
 { "price": 50, "max_per_order": 8 }
+```
+
+```json
+{ "variant_group": "V001", "variant_label": "小　8顆/袋" }
 ```
 
 - 找不到該 `product_id` 回 HTTP 404
@@ -374,7 +460,7 @@ npm run deploy
 
 - `payment_status` 只能是 `pending` 或 `confirmed`；`order_status` 只能是 `new`、`prepping_done`、`picked_up`、`cancelled`，帶了不在清單內的值會回 HTTP 400
 - 找不到該 `order_id` 回 HTTP 404
-- 成功回傳更新後的訂單內容（不含 `items`，品項明細請用 `GET /orders`）
+- 成功回傳更新後的訂單內容，含 `delivery_method`／`shipping_fee`／`delivery_address`（這支目前不能改這三個欄位，只能在下單當下由 `POST /orders` 決定，這裡只是原樣回傳），不含 `items`，品項明細請用 `GET /orders`
 
 ### `PATCH /settings`
 
@@ -396,6 +482,7 @@ npm run deploy
 | `announcement_visible` | 公告是否顯示（`TRUE`/`FALSE`） |
 | `preorder_open` | 預購開關（`TRUE`/`FALSE`） |
 | `pause_message` | 預購暫停時顯示的訊息 |
+| `shipping_fee` | 宅配運費金額（純數字，例如 `150`），顧客介面改版新增 |
 
 ```json
 {
@@ -459,7 +546,7 @@ Token 是 Worker 自己用 `TOKEN_SECRET` 簽出來的一串「到期時間 + HM
 - `.dev.vars.example`：本機測試環境變數範本（`.dev.vars` 本身已加進 `.gitignore`，不會被 commit）
 - `dashboard-single-file.js`：合併版程式碼，專門給不用終端機、直接在 Cloudflare Dashboard 網頁編輯器貼上部署用
 
-## 下一步（Phase 4）
+## 下一步
 
-- 顧客預購網站前端，串接目前公開不需要登入的 `GET /products`、`GET /campaigns`、`GET /settings`、`POST /orders`
+- 老闆後台 PWA 目前還沒有介面可以設定商品大小規格（`variant_group`／`variant_label`）、看訂單的取貨方式／運費／宅配地址，這些欄位這次先只在 Worker API 層做好，PWA 這幾頁要等 Phase 6（PWA 串接真實 API）才會一起處理
 - Phase 6 會把老闆 PWA 從假資料換成真的串接這裡的所有 API，包含 `POST /auth/login`
