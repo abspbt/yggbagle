@@ -1127,7 +1127,7 @@ async function renderCampaignEdit(id) {
   const isNew = id === 'new';
   loadingPage({ title: isNew ? '新增檔期' : '編輯檔期', back: 'more/campaigns' });
 
-  let c, hasOrders;
+  let c, hasOrders, prevCampaign = null, prevCampaignProductCount = 0;
   try {
     if (!isNew) {
       const [campaignsData, ordersData] = await Promise.all([
@@ -1140,6 +1140,15 @@ async function renderCampaignEdit(id) {
     } else {
       c = { campaign_id: null, name: '', start_date: '', end_date: '', pickup_slots: [], total_quantity_cap: '', status: 'upcoming' };
       hasOrders = false;
+      const [campaignsData, productsData] = await Promise.all([
+        Api.get('/admin/campaigns'),
+        Api.get('/admin/products'),
+      ]);
+      const campaigns = campaignsData.campaigns || [];
+      prevCampaign = campaigns.length ? campaigns[campaigns.length - 1] : null;
+      if (prevCampaign) {
+        prevCampaignProductCount = (productsData.products || []).filter(p => p.campaign_id === prevCampaign.campaign_id).length;
+      }
     }
   } catch (err) {
     handleLoadError(err, { title: isNew ? '新增檔期' : '編輯檔期', back: 'more/campaigns', retry: () => renderCampaignEdit(id) });
@@ -1202,6 +1211,14 @@ async function renderCampaignEdit(id) {
           <option value="ended" ${c.status === 'ended' ? 'selected' : ''}>已結束</option>
         </select>
       </div>
+      ${isNew && prevCampaign && prevCampaignProductCount > 0 ? `
+      <div class="field">
+        <div class="field-row">
+          <label class="field-label" style="margin-bottom:0;">沿用「${escapeHtml(prevCampaign.name)}」的商品清單</label>
+          <div class="switch on" id="f-copy-products"></div>
+        </div>
+        <div class="field-hint">開啟後，儲存時會自動複製上一檔的 ${prevCampaignProductCount} 項商品到這個新檔期，之後可以到「商品管理」個別調整。</div>
+      </div>` : ''}
 
       <div class="sticky-footer">
         <button class="btn btn-primary" id="btn-save">儲存</button>
@@ -1219,6 +1236,12 @@ async function renderCampaignEdit(id) {
     renderSlots();
   });
 
+  let copyProductsVal = !!(isNew && prevCampaign && prevCampaignProductCount > 0);
+  root.querySelector('#f-copy-products')?.addEventListener('click', () => {
+    copyProductsVal = !copyProductsVal;
+    root.querySelector('#f-copy-products').classList.toggle('on', copyProductsVal);
+  });
+
   root.querySelector('#btn-save').addEventListener('click', async () => {
     const name = root.querySelector('#f-name').value.trim();
     if (!name) { showToast('請輸入檔期名稱'); return; }
@@ -1230,13 +1253,17 @@ async function renderCampaignEdit(id) {
       status: root.querySelector('#f-status').value,
       pickup_slots: slots.map(s => ({ date: s.date, time_range: s.time_range })),
     };
+    if (copyProductsVal && prevCampaign) {
+      payload.copy_products_from_campaign_id = prevCampaign.campaign_id;
+    }
     try {
+      let result;
       if (isNew) {
-        await Api.post('/campaigns', payload);
+        result = await Api.post('/campaigns', payload);
       } else {
-        await Api.patch(`/campaigns/${encodeURIComponent(c.campaign_id)}`, payload);
+        result = await Api.patch(`/campaigns/${encodeURIComponent(c.campaign_id)}`, payload);
       }
-      showToast('已儲存');
+      showToast(result && result.copied_product_count ? `已儲存，並複製了 ${result.copied_product_count} 項商品` : '已儲存');
       navigate('more/campaigns');
     } catch (err) {
       if (err.isAuthError) { navigate('login'); return; }

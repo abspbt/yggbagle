@@ -866,7 +866,44 @@ function maxSlotSeq(existingSlots) {
 
 const CAMPAIGN_STATUS_VALUES = ["upcoming", "active", "ended"];
 
+// 把某個檔期底下的所有商品，整批複製成新檔期底下的新商品（新的 product_id，其他欄位照抄）。
+// 給「新增檔期」時「沿用上一檔商品清單」用，回傳這次複製了幾筆。
+async function copyProductsToCampaign(accessToken, spreadsheetId, fromCampaignId, toCampaignId) {
+  const existingProducts = await getSheetRows(accessToken, spreadsheetId, "Products");
+  const sourceProducts = existingProducts.filter((p) => p.campaign_id === fromCampaignId);
+  if (!sourceProducts.length) return 0;
+
+  let seq = 0;
+  for (const p of existingProducts) {
+    const match = typeof p.product_id === "string" && p.product_id.match(/^P(\d+)$/);
+    if (match) {
+      const n = parseInt(match[1], 10);
+      if (n > seq) seq = n;
+    }
+  }
+
+  const rows = sourceProducts.map((p) => {
+    seq += 1;
+    return [
+      `P${String(seq).padStart(3, "0")}`,
+      toCampaignId,
+      p.name || "",
+      p.category || "",
+      toNumber(p.price),
+      toNumber(p.max_per_order),
+      isActive(p.active),
+      p.variant_group || "",
+      p.variant_label || "",
+    ];
+  });
+
+  await appendRows(accessToken, spreadsheetId, "Products", rows);
+  return rows.length;
+}
+
 // POST /campaigns（Phase 6 新增）：老闆新增檔期，可以一次帶取貨時段陣列一起建立。
+// copy_products_from_campaign_id：選填，帶了的話會把該檔期底下所有商品複製一份到新檔期
+// （老闆端「沿用上一檔商品清單」功能，避免每次開新檔期都要重新輸入 40 個品項）。
 async function handleCreateCampaign(request, env) {
   let body;
   try {
@@ -875,7 +912,8 @@ async function handleCreateCampaign(request, env) {
     return json({ ok: false, error: "請求格式錯誤，需要 JSON" }, { status: 400 });
   }
 
-  const { name, start_date, end_date, total_quantity_cap, status, pickup_slots } = body || {};
+  const { name, start_date, end_date, total_quantity_cap, status, pickup_slots, copy_products_from_campaign_id } =
+    body || {};
   if (!name) {
     return json({ ok: false, error: "缺少必要欄位（name）" }, { status: 400 });
   }
@@ -916,6 +954,16 @@ async function handleCreateCampaign(request, env) {
     );
   }
 
+  let copiedProductCount = 0;
+  if (copy_products_from_campaign_id) {
+    copiedProductCount = await copyProductsToCampaign(
+      accessToken,
+      spreadsheetId,
+      copy_products_from_campaign_id,
+      campaignId
+    );
+  }
+
   return json(
     {
       ok: true,
@@ -928,6 +976,7 @@ async function handleCreateCampaign(request, env) {
         total_quantity_cap: toNumber(total_quantity_cap),
         pickup_slots: newSlots.map(({ slot_id, date, time_range }) => ({ slot_id, date, time_range })),
       },
+      copied_product_count: copiedProductCount,
     },
     { status: 201 }
   );

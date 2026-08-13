@@ -546,13 +546,15 @@ npm run deploy
   "status": "upcoming",
   "pickup_slots": [
     { "date": "2026-08-23", "time_range": "14:00-18:00" }
-  ]
+  ],
+  "copy_products_from_campaign_id": "C003"
 }
 ```
 
 - `name` 為必填，其他欄位可省略（`status` 預設 `upcoming`，必須是 `upcoming`/`active`/`ended` 其中之一，`pickup_slots` 預設空陣列）
 - 檔期編號自動產生，格式 `C001`、`C002`...；取貨時段編號 `S001`、`S002`...（不分檔期共用同一組編號，跟商品編號的做法一樣）
-- 成功回傳 HTTP 201，內容含 `pickup_slots`（帶著自動產生的 `slot_id`）
+- `copy_products_from_campaign_id`（選填，老闆後台 PWA「沿用上一檔商品清單」功能用）：帶了的話，會把該檔期底下的所有商品**整批複製**成新檔期底下的新商品（新的 `product_id`，其他欄位——名稱/分類/價格/單筆上限/上下架/大小規格——照抄）。這支店家品項固定，開新檔期不用每次重新輸入 40 個商品，之後在「商品管理」個別調整即可
+- 成功回傳 HTTP 201，內容含 `pickup_slots`（帶著自動產生的 `slot_id`）和 `copied_product_count`（這次複製了幾筆商品，沒有帶 `copy_products_from_campaign_id` 就是 `0`）
 
 ### `PATCH /campaigns/:campaign_id`
 
