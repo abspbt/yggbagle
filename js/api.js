@@ -44,7 +44,10 @@ const Api = {
 
     let res;
     try {
-      res = await fetch(API_BASE + path, Object.assign({}, options, { headers }));
+      // cache: 'no-store'：訂單/商品這些資料一直在變，Service Worker 預設是
+      // cache-first（app.js 開頭有註冊 sw.js），API 請求不能被當成靜態資源快取，
+      // 不然開後台常常要連續開好幾次才看得到最新訂單。sw.js 本來就會尊重這個設定。
+      res = await fetch(API_BASE + path, Object.assign({}, options, { headers, cache: 'no-store' }));
     } catch (e) {
       throw new Error('無法連線到伺服器，請檢查網路連線後再試一次');
     }
