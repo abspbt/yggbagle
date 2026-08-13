@@ -200,6 +200,70 @@ async function findRowByKey(accessToken, spreadsheetId, sheetName, keyColumn, ke
   return null;
 }
 
+// 跟 getSheetRows 一樣把整張表轉成物件陣列，但每個物件多帶一個 __rowNumber
+// （Sheets 上的實際列號），給需要之後刪除/覆寫特定列的呼叫端用（例如替換某檔期的取貨時段）。
+async function getRowsWithNumbers(accessToken, spreadsheetId, sheetName) {
+  const values = await getValues(accessToken, spreadsheetId, sheetName);
+  if (values.length === 0) return [];
+
+  const [header, ...rows] = values;
+  return rows
+    .map((row, i) => ({ row, rowNumber: i + 2 }))
+    .filter(({ row }) => row.some((cell) => cell !== "" && cell !== undefined))
+    .map(({ row, rowNumber }) => {
+      const obj = { __rowNumber: rowNumber };
+      header.forEach((key, i) => {
+        obj[key] = row[i] !== undefined ? row[i] : "";
+      });
+      return obj;
+    });
+}
+
+// 刪除某張表裡指定的多列（rowNumbers 是 Sheets 上的實際列號，從 1 開始，含標題列）。
+// 用 batchUpdate 的 deleteDimension，需要先查該分頁的內部 sheetId（不是分頁名稱）。
+// 從最大的列號開始刪，避免同一批刪除時列號互相位移。
+async function deleteRows(accessToken, spreadsheetId, sheetName, rowNumbers) {
+  if (!rowNumbers || rowNumbers.length === 0) return;
+
+  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`;
+  const metaRes = await fetch(metaUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!metaRes.ok) {
+    const text = await metaRes.text();
+    throw new Error(`讀取 Google Sheets 中繼資料失敗 (${metaRes.status}): ${text}`);
+  }
+  const meta = await metaRes.json();
+  const sheetMeta = (meta.sheets || []).find((s) => s.properties.title === sheetName);
+  if (!sheetMeta) {
+    throw new Error(`找不到分頁：${sheetName}`);
+  }
+  const sheetId = sheetMeta.properties.sheetId;
+
+  const requests = [...rowNumbers]
+    .sort((a, b) => b - a)
+    .map((rowNumber) => ({
+      deleteDimension: {
+        range: { sheetId, dimension: "ROWS", startIndex: rowNumber - 1, endIndex: rowNumber },
+      },
+    }));
+
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ requests }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`刪除 Google Sheets 資料失敗 (${res.status}): ${text}`);
+  }
+
+  return res.json();
+}
+
 // ---- 以下對應 src/auth.js ----
 
 // 老闆登入用的短期 Token：HMAC-SHA256 簽章，純 Web Crypto API，不需要額外套件、
@@ -280,7 +344,7 @@ async function verifyToken(token, secret) {
 // 顧客網站（Phase 4）跟老闆 PWA（Phase 6）會從不同網域打這個 Worker，開放 CORS。
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
@@ -723,6 +787,294 @@ async function handleUpdateProduct(request, env, productId) {
   });
 }
 
+// DELETE /products/:product_id：老闆刪除商品。過去訂單的品項是存快照（product_name_snapshot 等），
+// 不會因為商品被刪除而受影響，所以這裡不檢查有沒有被訂過，跟 Phase 1 假資料版的行為一致。
+async function handleDeleteProduct(env, productId) {
+  const { accessToken, spreadsheetId } = await getAuthedContext(env);
+  const found = await findRowByKey(accessToken, spreadsheetId, "Products", "product_id", productId);
+  if (!found) {
+    return json({ ok: false, error: `找不到商品：${productId}` }, { status: 404 });
+  }
+
+  await deleteRows(accessToken, spreadsheetId, "Products", [found.rowNumber]);
+  return json({ ok: true });
+}
+
+// GET /admin/products（Phase 6 新增）：給老闆商品管理頁用，回傳「所有」商品（不分檔期 active 與否、
+// 不分上下架），已訂購量算法跟公開的 GET /products 一樣（未取消訂單的 Order_Items 加總），
+// 但不限定只算 active 檔期，方便老闆回頭看已結束檔期的訂購狀況。
+async function handleAdminProducts(env) {
+  const { accessToken, spreadsheetId } = await getAuthedContext(env);
+  const [products, orders, orderItems] = await Promise.all([
+    getSheetRows(accessToken, spreadsheetId, "Products"),
+    getSheetRows(accessToken, spreadsheetId, "Orders"),
+    getSheetRows(accessToken, spreadsheetId, "Order_Items"),
+  ]);
+
+  const countedOrderIds = new Set(
+    orders.filter((o) => o.order_status !== "cancelled").map((o) => o.order_id)
+  );
+
+  const orderedQtyByProduct = {};
+  for (const item of orderItems) {
+    if (!countedOrderIds.has(item.order_id)) continue;
+    orderedQtyByProduct[item.product_id] =
+      (orderedQtyByProduct[item.product_id] || 0) + toNumber(item.quantity);
+  }
+
+  const list = products.map((p) => ({
+    product_id: p.product_id,
+    campaign_id: p.campaign_id,
+    name: p.name,
+    category: p.category,
+    price: toNumber(p.price),
+    max_per_order: toNumber(p.max_per_order),
+    active: isActive(p.active),
+    ordered_quantity: orderedQtyByProduct[p.product_id] || 0,
+    variant_group: p.variant_group || "",
+    variant_label: p.variant_label || "",
+  }));
+
+  return json({ ok: true, products: list });
+}
+
+// 檔期編號格式 C001、C002...，取現有檔期裡最大的編號 +1。
+function generateCampaignId(existingCampaigns) {
+  let maxSeq = 0;
+  for (const c of existingCampaigns) {
+    const match = typeof c.campaign_id === "string" && c.campaign_id.match(/^C(\d+)$/);
+    if (match) {
+      const seq = parseInt(match[1], 10);
+      if (seq > maxSeq) maxSeq = seq;
+    }
+  }
+  return `C${String(maxSeq + 1).padStart(3, "0")}`;
+}
+
+// 取貨時段編號格式 S001、S002...，不分檔期共用同一組編號（比照商品編號的做法）。
+function maxSlotSeq(existingSlots) {
+  let maxSeq = 0;
+  for (const s of existingSlots) {
+    const match = typeof s.slot_id === "string" && s.slot_id.match(/^S(\d+)$/);
+    if (match) {
+      const seq = parseInt(match[1], 10);
+      if (seq > maxSeq) maxSeq = seq;
+    }
+  }
+  return maxSeq;
+}
+
+const CAMPAIGN_STATUS_VALUES = ["upcoming", "active", "ended"];
+
+// POST /campaigns（Phase 6 新增）：老闆新增檔期，可以一次帶取貨時段陣列一起建立。
+async function handleCreateCampaign(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "請求格式錯誤，需要 JSON" }, { status: 400 });
+  }
+
+  const { name, start_date, end_date, total_quantity_cap, status, pickup_slots } = body || {};
+  if (!name) {
+    return json({ ok: false, error: "缺少必要欄位（name）" }, { status: 400 });
+  }
+
+  const campaignStatus = status !== undefined ? status : "upcoming";
+  if (!CAMPAIGN_STATUS_VALUES.includes(campaignStatus)) {
+    return json({ ok: false, error: `status 必須是：${CAMPAIGN_STATUS_VALUES.join(" / ")}` }, { status: 400 });
+  }
+
+  const { accessToken, spreadsheetId } = await getAuthedContext(env);
+  const [existingCampaigns, existingSlots] = await Promise.all([
+    getSheetRows(accessToken, spreadsheetId, "Campaigns"),
+    getSheetRows(accessToken, spreadsheetId, "PickupSlots"),
+  ]);
+
+  const campaignId = generateCampaignId(existingCampaigns);
+  await appendRows(accessToken, spreadsheetId, "Campaigns", [
+    [campaignId, name, campaignStatus, start_date || "", end_date || "", toNumber(total_quantity_cap)],
+  ]);
+
+  const slotsInput = Array.isArray(pickup_slots) ? pickup_slots : [];
+  let seq = maxSlotSeq(existingSlots);
+  const newSlots = slotsInput.map((s) => {
+    seq += 1;
+    return {
+      slot_id: `S${String(seq).padStart(3, "0")}`,
+      campaign_id: campaignId,
+      date: (s && s.date) || "",
+      time_range: (s && s.time_range) || "",
+    };
+  });
+  if (newSlots.length) {
+    await appendRows(
+      accessToken,
+      spreadsheetId,
+      "PickupSlots",
+      newSlots.map((s) => [s.slot_id, s.campaign_id, s.date, s.time_range])
+    );
+  }
+
+  return json(
+    {
+      ok: true,
+      campaign: {
+        campaign_id: campaignId,
+        name,
+        status: campaignStatus,
+        start_date: start_date || "",
+        end_date: end_date || "",
+        total_quantity_cap: toNumber(total_quantity_cap),
+        pickup_slots: newSlots.map(({ slot_id, date, time_range }) => ({ slot_id, date, time_range })),
+      },
+    },
+    { status: 201 }
+  );
+}
+
+// PATCH /campaigns/:campaign_id（Phase 6 新增）：編輯檔期基本欄位，只更新有帶到的欄位。
+// 如果請求裡帶了 pickup_slots（陣列，可以是空陣列），會把這個檔期原本的取貨時段全部刪掉、
+// 換成這次傳進來的新清單（整批覆蓋，不是逐筆增刪），比較符合老闆後台「編輯這個檔期的時段清單」的操作方式。
+async function handleUpdateCampaign(request, env, campaignId) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "請求格式錯誤，需要 JSON" }, { status: 400 });
+  }
+
+  if (body.status !== undefined && !CAMPAIGN_STATUS_VALUES.includes(body.status)) {
+    return json({ ok: false, error: `status 必須是：${CAMPAIGN_STATUS_VALUES.join(" / ")}` }, { status: 400 });
+  }
+
+  const { accessToken, spreadsheetId } = await getAuthedContext(env);
+  const found = await findRowByKey(accessToken, spreadsheetId, "Campaigns", "campaign_id", campaignId);
+  if (!found) {
+    return json({ ok: false, error: `找不到檔期：${campaignId}` }, { status: 404 });
+  }
+
+  const { header, row, rowNumber } = found;
+  const current = {};
+  header.forEach((key, i) => {
+    current[key] = row[i] !== undefined ? row[i] : "";
+  });
+
+  const updated = { ...current };
+  if (body.name !== undefined) updated.name = body.name;
+  if (body.status !== undefined) updated.status = body.status;
+  if (body.start_date !== undefined) updated.start_date = body.start_date;
+  if (body.end_date !== undefined) updated.end_date = body.end_date;
+  if (body.total_quantity_cap !== undefined) updated.total_quantity_cap = toNumber(body.total_quantity_cap);
+
+  await updateRow(
+    accessToken,
+    spreadsheetId,
+    "Campaigns",
+    rowNumber,
+    header.map((key) => updated[key])
+  );
+
+  let pickupSlotsResult;
+  if (Array.isArray(body.pickup_slots)) {
+    const allSlots = await getRowsWithNumbers(accessToken, spreadsheetId, "PickupSlots");
+    const thisCampaignSlots = allSlots.filter((s) => s.campaign_id === campaignId);
+    if (thisCampaignSlots.length) {
+      await deleteRows(accessToken, spreadsheetId, "PickupSlots", thisCampaignSlots.map((s) => s.__rowNumber));
+    }
+
+    let seq = maxSlotSeq(allSlots);
+    const newSlots = body.pickup_slots.map((s) => {
+      seq += 1;
+      return {
+        slot_id: `S${String(seq).padStart(3, "0")}`,
+        campaign_id: campaignId,
+        date: (s && s.date) || "",
+        time_range: (s && s.time_range) || "",
+      };
+    });
+    if (newSlots.length) {
+      await appendRows(
+        accessToken,
+        spreadsheetId,
+        "PickupSlots",
+        newSlots.map((s) => [s.slot_id, s.campaign_id, s.date, s.time_range])
+      );
+    }
+    pickupSlotsResult = newSlots.map(({ slot_id, date, time_range }) => ({ slot_id, date, time_range }));
+  } else {
+    const allSlots = await getSheetRows(accessToken, spreadsheetId, "PickupSlots");
+    pickupSlotsResult = allSlots
+      .filter((s) => s.campaign_id === campaignId)
+      .map((s) => ({ slot_id: s.slot_id, date: s.date, time_range: s.time_range }));
+  }
+
+  return json({
+    ok: true,
+    campaign: {
+      campaign_id: updated.campaign_id,
+      name: updated.name,
+      status: updated.status,
+      start_date: updated.start_date,
+      end_date: updated.end_date,
+      total_quantity_cap: toNumber(updated.total_quantity_cap),
+      pickup_slots: pickupSlotsResult,
+    },
+  });
+}
+
+// DELETE /campaigns/:campaign_id（Phase 6 新增）：只有這個檔期完全沒有任何訂單時才能刪除
+// （不分訂單狀態，取消的訂單也算），有訂單的檔期請改用 PATCH 把 status 改成 ended（結束檔期），
+// 跟 Phase 1 假資料版「有訂單不能刪、只能結束」的規則一致。
+async function handleDeleteCampaign(env, campaignId) {
+  const { accessToken, spreadsheetId } = await getAuthedContext(env);
+  const found = await findRowByKey(accessToken, spreadsheetId, "Campaigns", "campaign_id", campaignId);
+  if (!found) {
+    return json({ ok: false, error: `找不到檔期：${campaignId}` }, { status: 404 });
+  }
+
+  const orders = await getSheetRows(accessToken, spreadsheetId, "Orders");
+  if (orders.some((o) => o.campaign_id === campaignId)) {
+    return json(
+      { ok: false, error: "此檔期已有訂單，無法刪除，請改用「結束檔期」（PATCH status 改成 ended）" },
+      { status: 400 }
+    );
+  }
+
+  const allSlots = await getRowsWithNumbers(accessToken, spreadsheetId, "PickupSlots");
+  const thisCampaignSlots = allSlots.filter((s) => s.campaign_id === campaignId);
+  if (thisCampaignSlots.length) {
+    await deleteRows(accessToken, spreadsheetId, "PickupSlots", thisCampaignSlots.map((s) => s.__rowNumber));
+  }
+  await deleteRows(accessToken, spreadsheetId, "Campaigns", [found.rowNumber]);
+
+  return json({ ok: true });
+}
+
+// GET /admin/campaigns（Phase 6 新增）：給老闆檔期設定頁用，回傳「所有」檔期（不分 upcoming/active/ended），
+// 跟公開的 GET /campaigns（只回傳 active）不一樣。
+async function handleAdminCampaigns(env) {
+  const { accessToken, spreadsheetId } = await getAuthedContext(env);
+  const [campaigns, slots] = await Promise.all([
+    getSheetRows(accessToken, spreadsheetId, "Campaigns"),
+    getSheetRows(accessToken, spreadsheetId, "PickupSlots"),
+  ]);
+
+  const list = campaigns.map((c) => ({
+    campaign_id: c.campaign_id,
+    name: c.name,
+    status: c.status,
+    start_date: c.start_date,
+    end_date: c.end_date,
+    total_quantity_cap: toNumber(c.total_quantity_cap),
+    pickup_slots: slots
+      .filter((s) => s.campaign_id === c.campaign_id)
+      .map((s) => ({ slot_id: s.slot_id, date: s.date, time_range: s.time_range })),
+  }));
+
+  return json({ ok: true, campaigns: list });
+}
+
 // PATCH /orders/:order_id：老闆確認付款、更新訂單狀態（4 段：new/prepping_done/picked_up/cancelled）、改備註。
 // 這三個欄位都是可選的，至少要帶一個才有意義。
 async function handleUpdateOrder(request, env, orderId) {
@@ -998,6 +1350,25 @@ export default {
         if (!(await isAuthorized(request, env))) return unauthorized();
         return await handleUpdateProduct(request, env, decodeURIComponent(productMatch[1]));
       }
+      if (productMatch && request.method === "DELETE") {
+        if (!(await isAuthorized(request, env))) return unauthorized();
+        return await handleDeleteProduct(env, decodeURIComponent(productMatch[1]));
+      }
+
+      // Phase 6 新增：老闆檔期設定頁的新增/編輯/刪除檔期。
+      if (url.pathname === "/campaigns" && request.method === "POST") {
+        if (!(await isAuthorized(request, env))) return unauthorized();
+        return await handleCreateCampaign(request, env);
+      }
+      const campaignMatch = url.pathname.match(/^\/campaigns\/([^/]+)$/);
+      if (campaignMatch && request.method === "PATCH") {
+        if (!(await isAuthorized(request, env))) return unauthorized();
+        return await handleUpdateCampaign(request, env, decodeURIComponent(campaignMatch[1]));
+      }
+      if (campaignMatch && request.method === "DELETE") {
+        if (!(await isAuthorized(request, env))) return unauthorized();
+        return await handleDeleteCampaign(env, decodeURIComponent(campaignMatch[1]));
+      }
 
       if (url.pathname === "/settings" && request.method === "PATCH") {
         if (!(await isAuthorized(request, env))) return unauthorized();
@@ -1024,6 +1395,16 @@ export default {
       if (url.pathname === "/orders") {
         if (!(await isAuthorized(request, env))) return unauthorized();
         return await handleOrders(env);
+      }
+
+      // Phase 6 新增：老闆後台專用的「全部」商品/檔期列表（不像公開版只回傳 active 檔期/上架中商品）。
+      if (url.pathname === "/admin/products") {
+        if (!(await isAuthorized(request, env))) return unauthorized();
+        return await handleAdminProducts(env);
+      }
+      if (url.pathname === "/admin/campaigns") {
+        if (!(await isAuthorized(request, env))) return unauthorized();
+        return await handleAdminCampaigns(env);
       }
 
       return json({ ok: false, error: "Not found" }, { status: 404 });

@@ -1,10 +1,7 @@
-// 歪嘴雞烘焙後台 PWA — Phase 1（假資料，純前端）
-// 所有資料變更僅寫入 localStorage，不會送出任何網路請求
+// 歪嘴雞烘焙後台 PWA — Phase 6：串接真實 Worker API（js/api.js 的 Api）
+// 不再使用 localStorage 假資料，所有頁面的資料都即時向 Worker 拿。
 
-const APP_VERSION = '1.0.0';
-const PIN_CODE = '123456'; // 展示用固定 PIN
-const TOKEN_KEY = 'ykj_pwa_token';
-const TOKEN_TTL_MS = 30 * 60 * 1000; // 30 分鐘短期 token
+const APP_VERSION = '2.0.0';
 
 const root = document.getElementById('app-root');
 const tabbarEl = document.getElementById('tabbar');
@@ -14,7 +11,7 @@ const TAB_ROUTES = ['dashboard', 'orders', 'products', 'more'];
 
 function currentRoute() {
   const hash = location.hash.replace(/^#\/?/, '');
-  return hash || (hasValidToken() ? 'dashboard' : 'login');
+  return hash || (Api.hasValidToken() ? 'dashboard' : 'login');
 }
 
 function navigate(path) {
@@ -25,29 +22,11 @@ window.navigate = navigate;
 window.addEventListener('hashchange', render);
 window.addEventListener('DOMContentLoaded', () => {
   if (!location.hash) {
-    location.hash = hasValidToken() ? '#/dashboard' : '#/login';
+    location.hash = Api.hasValidToken() ? '#/dashboard' : '#/login';
   } else {
     render();
   }
 });
-
-// ---------------- Token / 登入 ----------------
-function hasValidToken() {
-  const raw = sessionStorage.getItem(TOKEN_KEY);
-  if (!raw) return false;
-  try {
-    const { exp } = JSON.parse(raw);
-    return Date.now() < exp;
-  } catch (e) {
-    return false;
-  }
-}
-function setToken() {
-  sessionStorage.setItem(TOKEN_KEY, JSON.stringify({ exp: Date.now() + TOKEN_TTL_MS }));
-}
-function clearToken() {
-  sessionStorage.removeItem(TOKEN_KEY);
-}
 
 // ---------------- 小工具 ----------------
 function el(html) {
@@ -60,34 +39,25 @@ function fmtMoney(n) {
   return '$' + Number(n).toLocaleString('zh-TW');
 }
 
+function fmtDateTime(iso) {
+  if (!iso) return '';
+  return String(iso).replace('T', ' ').slice(0, 16);
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// 已訂購量一律從訂單明細加總，不用寫死的欄位，避免跟訂單列表對不上
-function getProductOrderedQty(product) {
-  return Store.state.orders
-    .filter(o => o.orderStatus !== 'cancelled' && o.campaignId === product.campaignId)
-    .flatMap(o => o.items)
-    .filter(item => item.name === product.name)
-    .reduce((sum, item) => sum + item.qty, 0);
+function isSettingTrue(v) {
+  return v === true || v === 'TRUE' || v === 'true';
 }
 
-// 備料總覽只算「新訂單」（還沒備料），已備料/已取貨/已取消都不算，
-// 避免跟上面代表「累計總訂購量」的 getProductOrderedQty 混在一起用
-function getProductPrepQty(product) {
-  return Store.state.orders
-    .filter(o => o.orderStatus === 'new' && o.campaignId === product.campaignId)
-    .flatMap(o => o.items)
-    .filter(item => item.name === product.name)
-    .reduce((sum, item) => sum + item.qty, 0);
+function boolToSetting(v) {
+  return v ? 'TRUE' : 'FALSE';
 }
 
-function getCampaignOrderedQty(campaignId) {
-  return Store.state.orders
-    .filter(o => o.orderStatus !== 'cancelled' && o.campaignId === campaignId)
-    .flatMap(o => o.items)
-    .reduce((sum, item) => sum + item.qty, 0);
+function taipeiToday() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
 }
 
 function showToast(msg) {
@@ -133,6 +103,38 @@ function topbar({ title, back, action }) {
   `;
 }
 
+// ---------------- 載入中／錯誤共用畫面 ----------------
+function loadingPage({ title, back }) {
+  setContent(`
+    ${topbar({ title, back })}
+    <div class="page"><div class="empty-state"><div class="icon">⏳</div>載入中…</div></div>
+  `);
+}
+
+function errorPage({ title, back, message, retry }) {
+  setContent(`
+    ${topbar({ title, back })}
+    <div class="page">
+      <div class="empty-state">
+        <div class="icon">⚠️</div>
+        ${escapeHtml(message)}
+      </div>
+      <button class="btn btn-outline" id="btn-retry" style="max-width:200px; margin:0 auto; display:block;">重新載入</button>
+    </div>
+  `);
+  root.querySelector('#btn-retry').addEventListener('click', retry);
+}
+
+// 統一處理 API 錯誤：401 直接導回登入頁，其他錯誤顯示重試畫面。
+function handleLoadError(err, { title, back, retry }) {
+  if (err.isAuthError) {
+    showToast(err.message);
+    navigate('login');
+    return;
+  }
+  errorPage({ title, back, message: err.message, retry });
+}
+
 // ---------------- Tabbar ----------------
 const TABS = [
   { key: 'dashboard', icon: '🏠', label: '首頁' },
@@ -156,7 +158,7 @@ function render() {
   const parts = route.split('/');
   const base = parts[0];
 
-  if (base !== 'login' && !hasValidToken()) {
+  if (base !== 'login' && !Api.hasValidToken()) {
     location.hash = '#/login';
     return;
   }
@@ -206,17 +208,15 @@ function setContent(html) {
 
 // ================== PIN 登入 ==================
 let pinBuffer = '';
-let pinFailCount = 0;
-let pinLockUntil = 0;
-let pinLockTimer = null;
+let pinChecking = false;
 
 function renderLogin() {
   pinBuffer = '';
-  const shop = Store.state.shop;
+  pinChecking = false;
   setContent(`
     <div class="pin-screen">
-      <div class="pin-logo"><img src="icons/logo.png" alt="${escapeHtml(shop.name)}"></div>
-      <div class="pin-shop-name">${escapeHtml(shop.name)}</div>
+      <div class="pin-logo"><img src="icons/logo.png" alt="歪嘴雞烘焙"></div>
+      <div class="pin-shop-name">歪嘴雞烘焙</div>
       <div class="pin-sub">老闆後台登入</div>
       <div class="pin-dots" id="pin-dots">
         ${[0,1,2,3,4,5].map(() => `<span class="pin-dot"></span>`).join('')}
@@ -230,46 +230,16 @@ function renderLogin() {
       </div>
       <div class="pin-lock-msg" id="pin-lock-msg"></div>
     </div>
-    <div class="pin-version">v${APP_VERSION}（假資料展示版，PIN：123456）</div>
+    <div class="pin-version">v${APP_VERSION}</div>
   `);
-
-  updatePinLockUI();
 
   root.querySelectorAll('[data-key]').forEach(btn => {
     btn.addEventListener('click', () => handlePinKey(btn.getAttribute('data-key')));
   });
 }
 
-function updatePinLockUI() {
-  const msg = document.getElementById('pin-lock-msg');
-  const keypad = document.getElementById('pin-keypad');
-  if (!msg || !keypad) return;
-  const remain = Math.ceil((pinLockUntil - Date.now()) / 1000);
-  if (remain > 0) {
-    msg.textContent = `輸入錯誤次數過多，請於 ${remain} 秒後再試`;
-    keypad.style.pointerEvents = 'none';
-    keypad.style.opacity = '0.4';
-    if (!pinLockTimer) {
-      pinLockTimer = setInterval(() => {
-        if (Date.now() >= pinLockUntil) {
-          clearInterval(pinLockTimer);
-          pinLockTimer = null;
-          pinFailCount = 0;
-          updatePinLockUI();
-        } else {
-          updatePinLockUI();
-        }
-      }, 1000);
-    }
-  } else {
-    msg.textContent = '';
-    keypad.style.pointerEvents = '';
-    keypad.style.opacity = '';
-  }
-}
-
 function handlePinKey(key) {
-  if (Date.now() < pinLockUntil) return;
+  if (pinChecking) return;
   if (key === '⌫') {
     pinBuffer = pinBuffer.slice(0, -1);
     renderPinDots();
@@ -293,54 +263,104 @@ function renderPinDots(errorState = false) {
   });
 }
 
-function checkPin() {
-  if (pinBuffer === PIN_CODE) {
-    setToken();
+async function checkPin() {
+  pinChecking = true;
+  const keypad = document.getElementById('pin-keypad');
+  const msg = document.getElementById('pin-lock-msg');
+  if (keypad) { keypad.style.pointerEvents = 'none'; keypad.style.opacity = '0.5'; }
+  if (msg) msg.textContent = '登入中…';
+
+  const pin = pinBuffer;
+  try {
+    const data = await Api.login(pin);
+    Api.setToken(data.token, data.expires_at);
     navigate('dashboard');
     return;
+  } catch (err) {
+    const dotsWrap = document.getElementById('pin-dots');
+    renderPinDots(true);
+    dotsWrap.classList.add('shake');
+    if (navigator.vibrate) navigator.vibrate(200);
+    setTimeout(() => {
+      pinBuffer = '';
+      pinChecking = false;
+      dotsWrap.classList.remove('shake');
+      renderPinDots(false);
+      if (keypad) { keypad.style.pointerEvents = ''; keypad.style.opacity = ''; }
+      if (msg) msg.textContent = err.message || 'PIN 錯誤';
+    }, 400);
   }
-  pinFailCount++;
-  renderPinDots(true);
-  const dotsWrap = document.getElementById('pin-dots');
-  dotsWrap.classList.add('shake');
-  if (navigator.vibrate) navigator.vibrate(200);
-  setTimeout(() => {
-    pinBuffer = '';
-    dotsWrap.classList.remove('shake');
-    renderPinDots(false);
-    if (pinFailCount >= 5) {
-      pinLockUntil = Date.now() + 60 * 1000;
-      updatePinLockUI();
-    }
-  }, 400);
 }
 
 // ================== 🏠 今日 Dashboard ==================
-function renderDashboard() {
-  const s = Store.state;
-  const activeCampaign = s.campaigns.find(c => c.status === 'active');
-  const todayOrders = s.orders.filter(o => o.createdAt.startsWith('2026-08-10'));
-  const pendingPayment = s.orders.filter(o => o.paymentStatus === 'pending' && o.orderStatus !== 'picked_up' && o.orderStatus !== 'cancelled');
-  const orderedPct = activeCampaign ? Math.min(100, Math.round(getCampaignOrderedQty(activeCampaign.id) / activeCampaign.cap * 100)) : 0;
+async function renderDashboard() {
+  loadingPage({ title: '' });
+
+  let settingsData, ordersData, campaignsData, productsData;
+  try {
+    [settingsData, ordersData, campaignsData, productsData] = await Promise.all([
+      Api.get('/settings'),
+      Api.get('/orders'),
+      Api.get('/admin/campaigns'),
+      Api.get('/admin/products'),
+    ]);
+  } catch (err) {
+    handleLoadError(err, { title: '首頁', retry: renderDashboard });
+    return;
+  }
+
+  const settings = settingsData.settings || {};
+  const orders = ordersData.orders || [];
+  const campaigns = campaignsData.campaigns || [];
+  const products = productsData.products || [];
+
+  const shopName = settings.shop_name || '歪嘴雞烘焙';
+  const preorderOpen = isSettingTrue(settings.preorder_open);
+
+  const activeCampaign = campaigns.find(c => c.status === 'active');
+  const today = taipeiToday();
+  const todayOrders = orders.filter(o => (o.created_at || '').startsWith(today));
+  const pendingPayment = orders.filter(o => o.payment_status === 'pending' && o.order_status !== 'picked_up' && o.order_status !== 'cancelled');
+
+  function campaignOrderedQty(campaignId) {
+    return orders
+      .filter(o => o.campaign_id === campaignId && o.order_status !== 'cancelled')
+      .flatMap(o => o.items || [])
+      .reduce((sum, item) => sum + item.quantity, 0);
+  }
+
+  const orderedQty = activeCampaign ? campaignOrderedQty(activeCampaign.campaign_id) : 0;
+  const orderedPct = activeCampaign && activeCampaign.total_quantity_cap
+    ? Math.min(100, Math.round(orderedQty / activeCampaign.total_quantity_cap * 100))
+    : 0;
 
   const todoItems = pendingPayment.slice(0, 5).map(o => `
-    <button class="todo-item card-tap" style="width:100%;" data-nav="orders/${o.id}">
+    <button class="todo-item card-tap" style="width:100%;" data-nav="orders/${o.order_id}">
       <div class="todo-icon">💰</div>
       <div class="todo-main">
-        <div class="todo-title">${escapeHtml(o.customerName)} · ${fmtMoney(o.total)}</div>
-        <div class="todo-sub">${o.id} · 待確認付款</div>
+        <div class="todo-title">${escapeHtml(o.customer_name)} · ${fmtMoney(o.total)}</div>
+        <div class="todo-sub">${o.order_id} · 待確認付款</div>
       </div>
       <div class="todo-chevron">›</div>
     </button>
   `).join('');
 
-  const prepProducts = (activeCampaign ? s.products.filter(p => p.campaignId === activeCampaign.id) : s.products.slice())
-    .map(p => ({ ...p, prepQty: getProductPrepQty(p) }))
+  // 備料總覽：依 product_id 加總「新訂單」（還沒備料）的品項數量
+  const scopedProducts = activeCampaign ? products.filter(p => p.campaign_id === activeCampaign.campaign_id) : products;
+  const prepQtyByProduct = {};
+  orders
+    .filter(o => o.order_status === 'new')
+    .flatMap(o => o.items || [])
+    .forEach(item => {
+      prepQtyByProduct[item.product_id] = (prepQtyByProduct[item.product_id] || 0) + item.quantity;
+    });
+  const prepProducts = scopedProducts
+    .map(p => ({ ...p, prepQty: prepQtyByProduct[p.product_id] || 0 }))
     .filter(p => p.prepQty > 0)
     .sort((a, b) => b.prepQty - a.prepQty);
   const prepRows = prepProducts.map(p => `
     <div class="prep-row">
-      <div class="prep-name">${p.photo} ${escapeHtml(p.name)}</div>
+      <div class="prep-name">🥖 ${escapeHtml(p.name)}${p.variant_label ? `（${escapeHtml(p.variant_label)}）` : ''}</div>
       <div class="prep-count">${p.prepQty}</div>
     </div>
   `).join('');
@@ -348,12 +368,12 @@ function renderDashboard() {
   setContent(`
     <div class="topbar">
       <div class="brand-row" style="margin-bottom:0;">
-        <div class="brand-logo"><img src="icons/logo.png" alt="${escapeHtml(s.shop.name)}"></div>
+        <div class="brand-logo"><img src="icons/logo.png" alt="${escapeHtml(shopName)}"></div>
         <div>
-          <div class="brand-name">${escapeHtml(s.shop.name)}</div>
+          <div class="brand-name">${escapeHtml(shopName)}</div>
           <div class="brand-status">
-            <span class="status-dot ${s.preorderOpen ? '' : 'paused'}"></span>
-            ${s.preorderOpen ? '預購開放中' : '預購已暫停'}
+            <span class="status-dot ${preorderOpen ? '' : 'paused'}"></span>
+            ${preorderOpen ? '預購開放中' : '預購已暫停'}
           </div>
         </div>
       </div>
@@ -379,11 +399,11 @@ function renderDashboard() {
           <div class="card" style="margin-top:10px;">
             <div class="order-line" style="margin-top:0;">
               <span>${escapeHtml(activeCampaign.name)}</span>
-              <span>${getCampaignOrderedQty(activeCampaign.id)} / ${activeCampaign.cap}</span>
+              <span>${orderedQty} / ${activeCampaign.total_quantity_cap || '不限'}</span>
             </div>
             <div class="progress-bar"><div class="progress-bar-fill" style="width:${orderedPct}%"></div></div>
           </div>
-        ` : ''}
+        ` : `<div class="field-hint" style="text-align:left; margin-top:8px;">目前沒有進行中的檔期</div>`}
       </div>
 
       <div class="section">
@@ -413,22 +433,25 @@ function renderDashboard() {
   `);
 
   root.querySelector('[data-act="quick-toggle"]').addEventListener('click', () => {
-    confirmTogglePreorder();
+    confirmTogglePreorder(preorderOpen, () => renderDashboard());
   });
 }
 
-function confirmTogglePreorder() {
-  const s = Store.state;
-  const willOpen = !s.preorderOpen;
+function confirmTogglePreorder(currentOpen, onDone) {
+  const willOpen = !currentOpen;
   showDialog({
     title: willOpen ? '確定要開放預購嗎？' : '確定要暫停預購嗎？',
     body: willOpen ? '開放後，顧客即可在預購網站正常下單。' : '暫停後，顧客端將顯示暫停訊息，無法送出新訂單。',
     danger: !willOpen,
-    onConfirm: () => {
-      s.preorderOpen = willOpen;
-      Store.save();
-      showToast(willOpen ? '已開放預購' : '已暫停預購');
-      render();
+    onConfirm: async () => {
+      try {
+        await Api.patch('/settings', { preorder_open: boolToSetting(willOpen) });
+        showToast(willOpen ? '已開放預購' : '已暫停預購');
+        onDone && onDone();
+      } catch (err) {
+        if (err.isAuthError) { navigate('login'); return; }
+        showToast(err.message);
+      }
     }
   });
 }
@@ -437,48 +460,86 @@ function confirmTogglePreorder() {
 const ORDER_STATUS_LABEL = {
   new: '新訂單', prepping_done: '未取貨', picked_up: '已取貨', cancelled: '已取消'
 };
+
+function orderBadge(o) {
+  if (o.order_status === 'cancelled') return `<span class="badge badge-cancelled">已取消</span>`;
+  if (o.order_status === 'picked_up') return `<span class="badge badge-done">已取貨</span>`;
+  if (o.order_status === 'prepping_done') return `<span class="badge badge-confirmed">未取貨</span>`;
+  if (o.payment_status === 'pending') return `<span class="badge badge-pending">待確認付款</span>`;
+  return `<span class="badge badge-confirmed">已確認</span>`;
+}
+
+// 把所有檔期的取貨時段攤平成 slot_id -> {date, time_range} 的查詢表，訂單只存 pickup_slot_id。
+function buildSlotMap(campaigns) {
+  const map = {};
+  campaigns.forEach(c => (c.pickup_slots || []).forEach(s => { map[s.slot_id] = s; }));
+  return map;
+}
+
+function fulfillmentSummary(o, slotMap) {
+  if (o.delivery_method === 'delivery') {
+    return `宅配 · ${escapeHtml(o.delivery_address || '')}`;
+  }
+  const slot = slotMap[o.pickup_slot_id];
+  return slot ? `自取 · ${escapeHtml(slot.date)} ${escapeHtml(slot.time_range)}` : '自取';
+}
+
 let orderFilter = { chip: 'all', search: '' };
 
-function renderOrdersList() {
-  const s = Store.state;
+async function renderOrdersList() {
+  loadingPage({ title: '訂單列表' });
+
+  let ordersData, campaignsData;
+  try {
+    [ordersData, campaignsData] = await Promise.all([
+      Api.get('/orders'),
+      Api.get('/admin/campaigns'),
+    ]);
+  } catch (err) {
+    handleLoadError(err, { title: '訂單列表', retry: renderOrdersList });
+    return;
+  }
+
+  const orders = ordersData.orders || [];
+  const slotMap = buildSlotMap(campaignsData.campaigns || []);
+
   const chips = [
     { key: 'all', label: '全部' },
     { key: 'pending', label: '待確認付款' },
     { key: 'confirmed', label: '已確認' },
     { key: 'prepping_done', label: '未取貨' },
     { key: 'picked_up', label: '已取貨' },
-    { key: 'cancelled', label: '已取消' }
+    { key: 'cancelled', label: '已取消' },
+    { key: 'pickup', label: '自取' },
+    { key: 'delivery', label: '宅配' },
   ];
 
-  let list = s.orders.slice();
-  if (orderFilter.chip === 'pending') list = list.filter(o => o.paymentStatus === 'pending' && o.orderStatus === 'new');
-  else if (orderFilter.chip === 'confirmed') list = list.filter(o => o.paymentStatus === 'confirmed' && o.orderStatus === 'new');
-  else if (orderFilter.chip === 'prepping_done') list = list.filter(o => o.orderStatus === 'prepping_done');
-  else if (orderFilter.chip === 'picked_up') list = list.filter(o => o.orderStatus === 'picked_up');
-  else if (orderFilter.chip === 'cancelled') list = list.filter(o => o.orderStatus === 'cancelled');
+  let list = orders.slice();
+  if (orderFilter.chip === 'pending') list = list.filter(o => o.payment_status === 'pending' && o.order_status === 'new');
+  else if (orderFilter.chip === 'confirmed') list = list.filter(o => o.payment_status === 'confirmed' && o.order_status === 'new');
+  else if (orderFilter.chip === 'prepping_done') list = list.filter(o => o.order_status === 'prepping_done');
+  else if (orderFilter.chip === 'picked_up') list = list.filter(o => o.order_status === 'picked_up');
+  else if (orderFilter.chip === 'cancelled') list = list.filter(o => o.order_status === 'cancelled');
+  else if (orderFilter.chip === 'pickup') list = list.filter(o => o.delivery_method !== 'delivery');
+  else if (orderFilter.chip === 'delivery') list = list.filter(o => o.delivery_method === 'delivery');
 
   if (orderFilter.search.trim()) {
     const q = orderFilter.search.trim();
-    list = list.filter(o => o.customerName.includes(q) || o.id.includes(q) || o.customerPhone.includes(q));
+    list = list.filter(o => o.customer_name.includes(q) || o.order_id.includes(q) || o.customer_phone.includes(q));
   }
 
   const cards = list.map(o => {
-    const badge = o.orderStatus === 'cancelled' ? `<span class="badge badge-cancelled">已取消</span>`
-      : o.orderStatus === 'picked_up' ? `<span class="badge badge-done">已取貨</span>`
-      : o.orderStatus === 'prepping_done' ? `<span class="badge badge-confirmed">未取貨</span>`
-      : o.paymentStatus === 'pending' ? `<span class="badge badge-pending">待確認付款</span>`
-      : `<span class="badge badge-confirmed">已確認</span>`;
-    const itemsSummary = o.items.map(i => `${i.name} x${i.qty}`).join('、');
+    const itemsSummary = (o.items || []).map(i => `${i.product_name} x${i.quantity}`).join('、');
     return `
-      <button class="card card-tap" data-nav="orders/${o.id}">
+      <button class="card card-tap" data-nav="orders/${o.order_id}">
         <div class="order-card-top">
           <div>
-            <div class="order-id">${o.id}</div>
-            <div class="order-customer">${escapeHtml(o.customerName)}</div>
+            <div class="order-id">${o.order_id}</div>
+            <div class="order-customer">${escapeHtml(o.customer_name)}</div>
           </div>
-          ${badge}
+          ${orderBadge(o)}
         </div>
-        <div class="order-line"><span>取貨時段</span><span>${escapeHtml(o.pickupSlot)}</span></div>
+        <div class="order-line"><span>取貨方式</span><span>${fulfillmentSummary(o, slotMap)}</span></div>
         <div class="order-line"><span>品項</span><span>${escapeHtml(itemsSummary)}</span></div>
         <div class="order-amount">${fmtMoney(o.total)}</div>
       </button>
@@ -506,34 +567,38 @@ function renderOrdersList() {
   searchInput.addEventListener('input', () => {
     orderFilter.search = searchInput.value;
     renderOrdersList();
-    root.querySelector('#order-search').focus();
-    const val = root.querySelector('#order-search').value;
-    root.querySelector('#order-search').setSelectionRange(val.length, val.length);
   });
 }
 
-function renderOrderDetail(id) {
-  const s = Store.state;
-  const o = s.orders.find(x => x.id === id);
+async function renderOrderDetail(id) {
+  loadingPage({ title: '訂單詳情', back: 'orders' });
+
+  let ordersData, campaignsData;
+  try {
+    [ordersData, campaignsData] = await Promise.all([
+      Api.get('/orders'),
+      Api.get('/admin/campaigns'),
+    ]);
+  } catch (err) {
+    handleLoadError(err, { title: '訂單詳情', back: 'orders', retry: () => renderOrderDetail(id) });
+    return;
+  }
+
+  const o = (ordersData.orders || []).find(x => x.order_id === id);
   if (!o) { navigate('orders'); return; }
+  const slotMap = buildSlotMap(campaignsData.campaigns || []);
 
-  const badge = o.orderStatus === 'cancelled' ? `<span class="badge badge-cancelled">已取消</span>`
-    : o.orderStatus === 'picked_up' ? `<span class="badge badge-done">已取貨</span>`
-    : o.orderStatus === 'prepping_done' ? `<span class="badge badge-confirmed">未取貨</span>`
-    : o.paymentStatus === 'pending' ? `<span class="badge badge-pending">待確認付款</span>`
-    : `<span class="badge badge-confirmed">已確認</span>`;
-
-  const itemsHtml = o.items.map(i => `
+  const itemsHtml = (o.items || []).map(i => `
     <div class="order-line" style="font-size:14px; color:var(--color-text);">
-      <span>${escapeHtml(i.name)} x${i.qty}</span>
-      <span>${fmtMoney(i.price * i.qty)}</span>
+      <span>${escapeHtml(i.product_name)} x${i.quantity}</span>
+      <span>${fmtMoney(i.subtotal)}</span>
     </div>
   `).join('');
 
-  const canConfirmPayment = o.paymentStatus === 'pending' && (o.orderStatus === 'new' || o.orderStatus === 'prepping_done');
-  const canMarkPrepped = o.orderStatus === 'new';
-  const canMarkPickedUp = o.orderStatus === 'prepping_done';
-  const canCancel = o.orderStatus === 'new' || o.orderStatus === 'prepping_done';
+  const canConfirmPayment = o.payment_status === 'pending' && (o.order_status === 'new' || o.order_status === 'prepping_done');
+  const canMarkPrepped = o.order_status === 'new';
+  const canMarkPickedUp = o.order_status === 'prepping_done';
+  const canCancel = o.order_status === 'new' || o.order_status === 'prepping_done';
 
   setContent(`
     ${topbar({ title: '訂單詳情', back: 'orders' })}
@@ -541,19 +606,23 @@ function renderOrderDetail(id) {
       <div class="card">
         <div class="order-card-top">
           <div>
-            <div class="order-id">${o.id}</div>
-            <div class="order-customer">${escapeHtml(o.customerName)}</div>
+            <div class="order-id">${o.order_id}</div>
+            <div class="order-customer">${escapeHtml(o.customer_name)}</div>
           </div>
-          ${badge}
+          ${orderBadge(o)}
         </div>
-        <div class="order-line"><span>電話</span><span>${escapeHtml(o.customerPhone)}</span></div>
-        <div class="order-line"><span>取貨時段</span><span>${escapeHtml(o.pickupSlot)}</span></div>
-        <div class="order-line"><span>建立時間</span><span>${escapeHtml(o.createdAt)}</span></div>
+        <div class="order-line"><span>電話</span><span>${escapeHtml(o.customer_phone)}</span></div>
+        <div class="order-line"><span>取貨方式</span><span>${o.delivery_method === 'delivery' ? '宅配' : '自取'}</span></div>
+        ${o.delivery_method === 'delivery'
+          ? `<div class="order-line"><span>收件地址</span><span>${escapeHtml(o.delivery_address || '')}</span></div>`
+          : `<div class="order-line"><span>取貨時段</span><span>${slotMap[o.pickup_slot_id] ? escapeHtml(slotMap[o.pickup_slot_id].date + ' ' + slotMap[o.pickup_slot_id].time_range) : '—'}</span></div>`}
+        <div class="order-line"><span>建立時間</span><span>${escapeHtml(fmtDateTime(o.created_at))}</span></div>
       </div>
 
       <div class="card">
         <div class="section-title" style="margin-bottom:10px;">品項明細</div>
         ${itemsHtml}
+        ${o.delivery_method === 'delivery' ? `<div class="order-line"><span>運費</span><span>${fmtMoney(o.shipping_fee)}</span></div>` : ''}
         <div class="order-amount">總計 ${fmtMoney(o.total)}</div>
       </div>
 
@@ -574,30 +643,30 @@ function renderOrderDetail(id) {
     </div>
   `);
 
+  async function patchOrder(patch, successMsg) {
+    try {
+      await Api.patch(`/orders/${encodeURIComponent(id)}`, patch);
+      showToast(successMsg);
+      renderOrderDetail(id);
+    } catch (err) {
+      if (err.isAuthError) { navigate('login'); return; }
+      showToast(err.message);
+    }
+  }
+
   root.querySelector('[data-act="confirm-payment"]')?.addEventListener('click', () => {
     showDialog({
       title: '確認已收到付款？',
-      body: `訂單 ${o.id}，金額 ${fmtMoney(o.total)}`,
+      body: `訂單 ${o.order_id}，金額 ${fmtMoney(o.total)}`,
       confirmText: '確認付款',
-      onConfirm: () => {
-        o.paymentStatus = 'confirmed';
-        Store.save();
-        showToast('已確認付款');
-        renderOrderDetail(id);
-      }
+      onConfirm: () => patchOrder({ payment_status: 'confirmed' }, '已確認付款'),
     });
   });
   root.querySelector('[data-act="mark-prepped"]')?.addEventListener('click', () => {
-    o.orderStatus = 'prepping_done';
-    Store.save();
-    showToast('已標記為未取貨（已備料）');
-    renderOrderDetail(id);
+    patchOrder({ order_status: 'prepping_done' }, '已標記為未取貨（已備料）');
   });
   root.querySelector('[data-act="mark-pickedup"]')?.addEventListener('click', () => {
-    o.orderStatus = 'picked_up';
-    Store.save();
-    showToast('已標記為已取貨');
-    renderOrderDetail(id);
+    patchOrder({ order_status: 'picked_up' }, '已標記為已取貨');
   });
   root.querySelector('[data-act="cancel-order"]')?.addEventListener('click', () => {
     showDialog({
@@ -605,12 +674,7 @@ function renderOrderDetail(id) {
       body: '取消後將無法復原，若客戶要重新訂購請請他重新送出訂單。',
       danger: true,
       confirmText: '取消訂單',
-      onConfirm: () => {
-        o.orderStatus = 'cancelled';
-        Store.save();
-        showToast('訂單已取消');
-        renderOrderDetail(id);
-      }
+      onConfirm: () => patchOrder({ order_status: 'cancelled' }, '訂單已取消'),
     });
   });
 }
@@ -618,26 +682,40 @@ function renderOrderDetail(id) {
 // ================== 🥖 商品管理 ==================
 let productFilterCampaign = 'all';
 
-function renderProductsList() {
-  const s = Store.state;
-  const chips = [{ id: 'all', name: '全部檔期' }, ...s.campaigns];
+async function renderProductsList() {
+  loadingPage({ title: '商品管理' });
 
-  let list = s.products.slice();
-  if (productFilterCampaign !== 'all') list = list.filter(p => p.campaignId === productFilterCampaign);
+  let productsData, campaignsData;
+  try {
+    [productsData, campaignsData] = await Promise.all([
+      Api.get('/admin/products'),
+      Api.get('/admin/campaigns'),
+    ]);
+  } catch (err) {
+    handleLoadError(err, { title: '商品管理', retry: renderProductsList });
+    return;
+  }
+
+  const products = productsData.products || [];
+  const campaigns = campaignsData.campaigns || [];
+  const chips = [{ campaign_id: 'all', name: '全部檔期' }, ...campaigns];
+
+  let list = products.slice();
+  if (productFilterCampaign !== 'all') list = list.filter(p => p.campaign_id === productFilterCampaign);
 
   const cards = list.map(p => `
     <div class="card">
       <div class="product-card">
-        <button class="card-tap" data-nav="products/${p.id}" style="display:flex; gap:12px; flex:1; min-width:0; align-items:center;">
-          <div class="product-thumb">${p.photo}</div>
+        <button class="card-tap" data-nav="products/${p.product_id}" style="display:flex; gap:12px; flex:1; min-width:0; align-items:center;">
+          <div class="product-thumb">🥖</div>
           <div class="product-main">
-            <div class="product-name">${escapeHtml(p.name)}</div>
-            <div class="product-meta">${fmtMoney(p.price)} · 限購 ${p.maxPerOrder} 袋</div>
-            <div class="product-ordered">已訂購 ${getProductOrderedQty(p)}</div>
+            <div class="product-name">${escapeHtml(p.name)}${p.variant_label ? ` <span style="color:var(--color-text-muted); font-weight:normal;">（${escapeHtml(p.variant_label)}）</span>` : ''}</div>
+            <div class="product-meta">${fmtMoney(p.price)} · 限購 ${p.max_per_order} 袋</div>
+            <div class="product-ordered">已訂購 ${p.ordered_quantity}</div>
           </div>
         </button>
         <div class="product-side">
-          <div class="switch ${p.active ? 'on' : ''}" data-toggle-active="${p.id}"></div>
+          <div class="switch ${p.active ? 'on' : ''}" data-toggle-active="${p.product_id}"></div>
         </div>
       </div>
     </div>
@@ -650,7 +728,7 @@ function renderProductsList() {
     </div>
     <div class="page">
       <div class="chip-row">
-        ${chips.map(c => `<button class="chip ${productFilterCampaign === c.id ? 'active' : ''}" data-chip="${c.id}">${escapeHtml(c.name)}</button>`).join('')}
+        ${chips.map(c => `<button class="chip ${productFilterCampaign === c.campaign_id ? 'active' : ''}" data-chip="${c.campaign_id}">${escapeHtml(c.name)}</button>`).join('')}
       </div>
       ${cards || `<div class="empty-state"><div class="icon">🥯</div>此檔期尚無商品</div>`}
     </div>
@@ -663,59 +741,82 @@ function renderProductsList() {
     });
   });
   root.querySelectorAll('[data-toggle-active]').forEach(sw => {
-    sw.addEventListener('click', (e) => {
+    sw.addEventListener('click', async (e) => {
       e.stopPropagation();
       const id = sw.getAttribute('data-toggle-active');
-      const p = s.products.find(x => x.id === id);
-      p.active = !p.active;
-      Store.save();
-      showToast(p.active ? `${p.name} 已上架` : `${p.name} 已下架`);
-      renderProductsList();
+      const p = products.find(x => x.product_id === id);
+      try {
+        await Api.patch(`/products/${encodeURIComponent(id)}`, { active: !p.active });
+        showToast(!p.active ? `${p.name} 已上架` : `${p.name} 已下架`);
+        renderProductsList();
+      } catch (err) {
+        if (err.isAuthError) { navigate('login'); return; }
+        showToast(err.message);
+      }
     });
   });
 }
 
-function renderProductEdit(id) {
-  const s = Store.state;
+async function renderProductEdit(id) {
   const isNew = id === 'new';
-  const p = isNew ? { id: null, name: '', desc: '', price: '', maxPerOrder: '', campaignId: s.campaigns[0]?.id, active: true, photo: '🥖' } : s.products.find(x => x.id === id);
-  if (!p) { navigate('products'); return; }
+  loadingPage({ title: isNew ? '新增商品' : '編輯商品', back: 'products' });
+
+  let campaignsData, p;
+  try {
+    campaignsData = await Api.get('/admin/campaigns');
+    if (!isNew) {
+      const productsData = await Api.get('/admin/products');
+      p = (productsData.products || []).find(x => x.product_id === id);
+      if (!p) { navigate('products'); return; }
+    }
+  } catch (err) {
+    handleLoadError(err, { title: isNew ? '新增商品' : '編輯商品', back: 'products', retry: () => renderProductEdit(id) });
+    return;
+  }
+
+  const campaigns = campaignsData.campaigns || [];
+  const data = isNew
+    ? { product_id: null, name: '', category: '', price: '', max_per_order: '', campaign_id: campaigns[0]?.campaign_id || '', active: true, variant_group: '', variant_label: '' }
+    : p;
 
   setContent(`
     ${topbar({ title: isNew ? '新增商品' : '編輯商品', back: 'products' })}
     <div class="page">
       <div class="field">
-        <div class="photo-upload">
-          <div class="icon">${p.photo || '📷'}</div>
-          <div>點擊上傳商品照片（展示版不可上傳）</div>
-        </div>
-      </div>
-      <div class="field">
         <label class="field-label">商品名稱</label>
-        <input class="field-input" id="f-name" value="${escapeHtml(p.name)}" placeholder="例：原味貝果" />
+        <input class="field-input" id="f-name" value="${escapeHtml(data.name)}" placeholder="例：原味貝果" />
       </div>
       <div class="field">
-        <label class="field-label">描述</label>
-        <textarea class="field-textarea" id="f-desc" placeholder="簡短介紹商品特色">${escapeHtml(p.desc)}</textarea>
+        <label class="field-label">分類</label>
+        <input class="field-input" id="f-category" value="${escapeHtml(data.category || '')}" placeholder="例：有餡系列" />
       </div>
       <div class="field">
         <label class="field-label">價格</label>
-        <input class="field-input" id="f-price" type="number" inputmode="numeric" value="${p.price}" placeholder="0" />
+        <input class="field-input" id="f-price" type="number" inputmode="numeric" value="${data.price}" placeholder="0" />
       </div>
       <div class="field">
         <label class="field-label">單筆訂單限購數量（袋）</label>
-        <input class="field-input" id="f-max" type="number" inputmode="numeric" value="${p.maxPerOrder}" placeholder="0" />
+        <input class="field-input" id="f-max" type="number" inputmode="numeric" value="${data.max_per_order}" placeholder="0" />
       </div>
       <div class="field">
         <label class="field-label">所屬檔期</label>
         <select class="field-select" id="f-campaign">
-          ${s.campaigns.map(c => `<option value="${c.id}" ${c.id === p.campaignId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+          ${campaigns.map(c => `<option value="${c.campaign_id}" ${c.campaign_id === data.campaign_id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
         </select>
+      </div>
+      <div class="field">
+        <label class="field-label">規格分組</label>
+        <input class="field-input" id="f-variant-group" value="${escapeHtml(data.variant_group || '')}" placeholder="同一組大小規格請填一樣的值，例：V001" />
+        <div class="field-hint">沒有大小規格的商品留空白即可</div>
+      </div>
+      <div class="field">
+        <label class="field-label">規格標籤</label>
+        <input class="field-input" id="f-variant-label" value="${escapeHtml(data.variant_label || '')}" placeholder="顯示在商品卡上的規格文字，例：大　5顆/袋" />
       </div>
       <div class="field">
         <div class="field-row">
           <label class="field-label" style="margin-bottom:0;">上架狀態</label>
-          <div class="switch ${p.active ? 'on' : ''}" id="f-active"></div>
+          <div class="switch ${data.active ? 'on' : ''}" id="f-active"></div>
         </div>
       </div>
 
@@ -726,45 +827,56 @@ function renderProductEdit(id) {
     </div>
   `);
 
-  let activeVal = p.active;
+  let activeVal = data.active;
   root.querySelector('#f-active').addEventListener('click', () => {
     activeVal = !activeVal;
     root.querySelector('#f-active').classList.toggle('on', activeVal);
   });
 
-  root.querySelector('#btn-save').addEventListener('click', () => {
+  root.querySelector('#btn-save').addEventListener('click', async () => {
     const name = root.querySelector('#f-name').value.trim();
     if (!name) { showToast('請輸入商品名稱'); return; }
-    const data = {
+    const campaignId = root.querySelector('#f-campaign').value;
+    if (!campaignId) { showToast('請先建立檔期，才能新增商品'); return; }
+    const payload = {
       name,
-      desc: root.querySelector('#f-desc').value.trim(),
+      category: root.querySelector('#f-category').value.trim(),
       price: Number(root.querySelector('#f-price').value) || 0,
-      maxPerOrder: Number(root.querySelector('#f-max').value) || 0,
-      campaignId: root.querySelector('#f-campaign').value,
-      active: activeVal
+      max_per_order: Number(root.querySelector('#f-max').value) || 0,
+      campaign_id: campaignId,
+      active: activeVal,
+      variant_group: root.querySelector('#f-variant-group').value.trim(),
+      variant_label: root.querySelector('#f-variant-label').value.trim(),
     };
-    if (isNew) {
-      const newId = 'P' + String(Date.now()).slice(-6);
-      s.products.push({ id: newId, photo: '🥖', ...data });
-    } else {
-      Object.assign(p, data);
+    try {
+      if (isNew) {
+        await Api.post('/products', payload);
+      } else {
+        await Api.patch(`/products/${encodeURIComponent(data.product_id)}`, payload);
+      }
+      showToast('已儲存');
+      navigate('products');
+    } catch (err) {
+      if (err.isAuthError) { navigate('login'); return; }
+      showToast(err.message);
     }
-    Store.save();
-    showToast('已儲存');
-    navigate('products');
   });
 
   root.querySelector('#btn-delete')?.addEventListener('click', () => {
     showDialog({
       title: '確定要刪除此商品？',
-      body: `「${escapeHtml(p.name)}」刪除後無法復原。`,
+      body: `「${escapeHtml(data.name)}」刪除後無法復原。`,
       danger: true,
       confirmText: '刪除',
-      onConfirm: () => {
-        s.products = s.products.filter(x => x.id !== p.id);
-        Store.save();
-        showToast('已刪除商品');
-        navigate('products');
+      onConfirm: async () => {
+        try {
+          await Api.del(`/products/${encodeURIComponent(data.product_id)}`);
+          showToast('已刪除商品');
+          navigate('products');
+        } catch (err) {
+          if (err.isAuthError) { navigate('login'); return; }
+          showToast(err.message);
+        }
       }
     });
   });
@@ -797,7 +909,7 @@ function renderMoreMenu() {
           <div class="chevron">›</div>
         </button>
       </div>
-      <div class="field-hint" style="text-align:center; margin-top:16px;">Phase 1 假資料展示版 · v${APP_VERSION}</div>
+      <div class="field-hint" style="text-align:center; margin-top:16px;">v${APP_VERSION}</div>
     </div>
   `);
   root.querySelector('[data-act="logout"]').addEventListener('click', () => {
@@ -807,7 +919,7 @@ function renderMoreMenu() {
       confirmText: '登出',
       danger: true,
       onConfirm: () => {
-        clearToken();
+        Api.clearToken();
         navigate('login');
       }
     });
@@ -815,8 +927,18 @@ function renderMoreMenu() {
 }
 
 // ================== 📢 公告設定 ==================
-function renderAnnouncement() {
-  const s = Store.state;
+async function renderAnnouncement() {
+  loadingPage({ title: '公告設定', back: 'more' });
+
+  let settingsData;
+  try {
+    settingsData = await Api.get('/settings');
+  } catch (err) {
+    handleLoadError(err, { title: '公告設定', back: 'more', retry: renderAnnouncement });
+    return;
+  }
+
+  const settings = settingsData.settings || {};
   const MAX_LEN = 200;
 
   function paint() {
@@ -831,12 +953,12 @@ function renderAnnouncement() {
       <div class="field">
         <div class="field-row">
           <label class="field-label" style="margin-bottom:0;">顯示於顧客端</label>
-          <div class="switch ${s.announcement.visible ? 'on' : ''}" id="f-visible"></div>
+          <div class="switch ${isSettingTrue(settings.announcement_visible) ? 'on' : ''}" id="f-visible"></div>
         </div>
       </div>
       <div class="field">
         <label class="field-label">公告內容</label>
-        <textarea class="field-textarea" id="f-text" maxlength="${MAX_LEN}" style="min-height:140px;">${escapeHtml(s.announcement.text)}</textarea>
+        <textarea class="field-textarea" id="f-text" maxlength="${MAX_LEN}" style="min-height:140px;">${escapeHtml(settings.announcement_text || '')}</textarea>
         <div class="field-hint" id="char-count">0 / ${MAX_LEN}</div>
       </div>
       <div class="field">
@@ -849,7 +971,7 @@ function renderAnnouncement() {
     </div>
   `);
 
-  let visibleVal = s.announcement.visible;
+  let visibleVal = isSettingTrue(settings.announcement_visible);
   root.querySelector('#f-visible').addEventListener('click', () => {
     visibleVal = !visibleVal;
     root.querySelector('#f-visible').classList.toggle('on', visibleVal);
@@ -857,11 +979,17 @@ function renderAnnouncement() {
   root.querySelector('#f-text').addEventListener('input', paint);
   paint();
 
-  root.querySelector('#btn-save').addEventListener('click', () => {
-    s.announcement.text = root.querySelector('#f-text').value;
-    s.announcement.visible = visibleVal;
-    Store.save();
-    showToast('公告已儲存');
+  root.querySelector('#btn-save').addEventListener('click', async () => {
+    try {
+      await Api.patch('/settings', {
+        announcement_text: root.querySelector('#f-text').value,
+        announcement_visible: boolToSetting(visibleVal),
+      });
+      showToast('公告已儲存');
+    } catch (err) {
+      if (err.isAuthError) { navigate('login'); return; }
+      showToast(err.message);
+    }
   });
 }
 
@@ -869,21 +997,44 @@ function renderAnnouncement() {
 const CAMPAIGN_STATUS_LABEL = { active: '進行中', upcoming: '即將開始', ended: '已結束' };
 const CAMPAIGN_STATUS_BADGE = { active: 'badge-active', upcoming: 'badge-upcoming', ended: 'badge-ended' };
 
-function renderCampaignsList() {
-  const s = Store.state;
-  const cards = s.campaigns.map(c => {
-    const ordered = getCampaignOrderedQty(c.id);
-    const pct = Math.min(100, Math.round((ordered / c.cap) * 100));
+async function renderCampaignsList() {
+  loadingPage({ title: '預購檔期設定', back: 'more' });
+
+  let campaignsData, ordersData;
+  try {
+    [campaignsData, ordersData] = await Promise.all([
+      Api.get('/admin/campaigns'),
+      Api.get('/orders'),
+    ]);
+  } catch (err) {
+    handleLoadError(err, { title: '預購檔期設定', back: 'more', retry: renderCampaignsList });
+    return;
+  }
+
+  const campaigns = campaignsData.campaigns || [];
+  const orders = ordersData.orders || [];
+
+  function orderedQty(campaignId) {
+    return orders
+      .filter(o => o.campaign_id === campaignId && o.order_status !== 'cancelled')
+      .flatMap(o => o.items || [])
+      .reduce((sum, item) => sum + item.quantity, 0);
+  }
+
+  const cards = campaigns.map(c => {
+    const ordered = orderedQty(c.campaign_id);
+    const cap = c.total_quantity_cap || 0;
+    const pct = cap ? Math.min(100, Math.round((ordered / cap) * 100)) : 0;
     return `
-      <button class="card card-tap" data-nav="more/campaigns/${c.id}">
+      <button class="card card-tap" data-nav="more/campaigns/${c.campaign_id}">
         <div class="order-card-top">
           <div class="order-customer">${escapeHtml(c.name)}</div>
-          <span class="badge ${CAMPAIGN_STATUS_BADGE[c.status]}">${CAMPAIGN_STATUS_LABEL[c.status]}</span>
+          <span class="badge ${CAMPAIGN_STATUS_BADGE[c.status] || ''}">${CAMPAIGN_STATUS_LABEL[c.status] || c.status}</span>
         </div>
-        <div class="order-line"><span>預購期間</span><span>${c.start} ~ ${c.end}</span></div>
-        <div class="order-line"><span>取貨日</span><span>${c.pickupSlots.map(p => p.date).join('、')}</span></div>
-        <div class="order-line"><span>已訂購量</span><span>${ordered} / ${c.cap}</span></div>
-        <div class="progress-bar"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+        <div class="order-line"><span>預購期間</span><span>${escapeHtml(c.start_date || '')} ~ ${escapeHtml(c.end_date || '')}</span></div>
+        <div class="order-line"><span>取貨日</span><span>${(c.pickup_slots || []).map(s => s.date).join('、') || '—'}</span></div>
+        <div class="order-line"><span>已訂購量</span><span>${ordered} / ${cap || '不限'}</span></div>
+        ${cap ? `<div class="progress-bar"><div class="progress-bar-fill" style="width:${pct}%"></div></div>` : ''}
       </button>
     `;
   }).join('');
@@ -894,25 +1045,41 @@ function renderCampaignsList() {
       <div class="topbar-title">預購檔期設定</div>
       <button class="topbar-action" data-nav="more/campaigns/new">+ 新增</button>
     </div>
-    <div class="page">${cards}</div>
+    <div class="page">${cards || `<div class="empty-state"><div class="icon">📅</div>目前沒有任何檔期</div>`}</div>
   `);
 }
 
-function renderCampaignEdit(id) {
-  const s = Store.state;
+async function renderCampaignEdit(id) {
   const isNew = id === 'new';
-  const c = isNew ? { id: null, name: '', start: '', end: '', pickupSlots: [], cap: '', status: 'upcoming' } : s.campaigns.find(x => x.id === id);
-  if (!c) { navigate('more/campaigns'); return; }
+  loadingPage({ title: isNew ? '新增檔期' : '編輯檔期', back: 'more/campaigns' });
 
-  const hasOrders = !isNew && s.orders.some(o => o.campaignId === c.id);
-  let slots = c.pickupSlots.map(s => ({ ...s }));
+  let c, hasOrders;
+  try {
+    if (!isNew) {
+      const [campaignsData, ordersData] = await Promise.all([
+        Api.get('/admin/campaigns'),
+        Api.get('/orders'),
+      ]);
+      c = (campaignsData.campaigns || []).find(x => x.campaign_id === id);
+      if (!c) { navigate('more/campaigns'); return; }
+      hasOrders = (ordersData.orders || []).some(o => o.campaign_id === id);
+    } else {
+      c = { campaign_id: null, name: '', start_date: '', end_date: '', pickup_slots: [], total_quantity_cap: '', status: 'upcoming' };
+      hasOrders = false;
+    }
+  } catch (err) {
+    handleLoadError(err, { title: isNew ? '新增檔期' : '編輯檔期', back: 'more/campaigns', retry: () => renderCampaignEdit(id) });
+    return;
+  }
+
+  let slots = (c.pickup_slots || []).map(s => ({ ...s }));
 
   function renderSlots() {
     const wrap = root.querySelector('#slots-wrap');
     wrap.innerHTML = slots.map((slot, idx) => `
       <div class="slot-row">
-        <input class="field-input" type="date" value="${slot.date}" data-slot-date="${idx}" style="flex:1;" />
-        <input class="field-input" value="${escapeHtml(slot.time)}" placeholder="14:00-18:00" data-slot-time="${idx}" style="flex:1;" />
+        <input class="field-input" type="date" value="${slot.date || ''}" data-slot-date="${idx}" style="flex:1;" />
+        <input class="field-input" value="${escapeHtml(slot.time_range || '')}" placeholder="14:00-18:00" data-slot-time="${idx}" style="flex:1;" />
         <div class="slot-remove" data-slot-remove="${idx}">✕</div>
       </div>
     `).join('');
@@ -920,7 +1087,7 @@ function renderCampaignEdit(id) {
       inp.addEventListener('change', () => { slots[+inp.getAttribute('data-slot-date')].date = inp.value; });
     });
     wrap.querySelectorAll('[data-slot-time]').forEach(inp => {
-      inp.addEventListener('input', () => { slots[+inp.getAttribute('data-slot-time')].time = inp.value; });
+      inp.addEventListener('input', () => { slots[+inp.getAttribute('data-slot-time')].time_range = inp.value; });
     });
     wrap.querySelectorAll('[data-slot-remove]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -940,8 +1107,8 @@ function renderCampaignEdit(id) {
       <div class="field">
         <label class="field-label">預購起訖日</label>
         <div style="display:flex; gap:10px;">
-          <input class="field-input" type="date" id="f-start" value="${c.start}" />
-          <input class="field-input" type="date" id="f-end" value="${c.end}" />
+          <input class="field-input" type="date" id="f-start" value="${c.start_date || ''}" />
+          <input class="field-input" type="date" id="f-end" value="${c.end_date || ''}" />
         </div>
       </div>
       <div class="field">
@@ -950,8 +1117,8 @@ function renderCampaignEdit(id) {
         <button class="add-slot-btn" id="btn-add-slot">+ 新增取貨時段</button>
       </div>
       <div class="field">
-        <label class="field-label">總量上限</label>
-        <input class="field-input" id="f-cap" type="number" inputmode="numeric" value="${c.cap}" placeholder="0" />
+        <label class="field-label">總量上限（0 或留空代表不限制）</label>
+        <input class="field-input" id="f-cap" type="number" inputmode="numeric" value="${c.total_quantity_cap || ''}" placeholder="0" />
       </div>
       <div class="field">
         <label class="field-label">檔期狀態</label>
@@ -974,30 +1141,33 @@ function renderCampaignEdit(id) {
 
   renderSlots();
   root.querySelector('#btn-add-slot').addEventListener('click', () => {
-    slots.push({ id: 'S' + Date.now(), date: '', time: '' });
+    slots.push({ date: '', time_range: '' });
     renderSlots();
   });
 
-  root.querySelector('#btn-save').addEventListener('click', () => {
+  root.querySelector('#btn-save').addEventListener('click', async () => {
     const name = root.querySelector('#f-name').value.trim();
     if (!name) { showToast('請輸入檔期名稱'); return; }
-    const data = {
+    const payload = {
       name,
-      start: root.querySelector('#f-start').value,
-      end: root.querySelector('#f-end').value,
-      pickupSlots: slots,
-      cap: Number(root.querySelector('#f-cap').value) || 0,
-      status: root.querySelector('#f-status').value
+      start_date: root.querySelector('#f-start').value,
+      end_date: root.querySelector('#f-end').value,
+      total_quantity_cap: Number(root.querySelector('#f-cap').value) || 0,
+      status: root.querySelector('#f-status').value,
+      pickup_slots: slots.map(s => ({ date: s.date, time_range: s.time_range })),
     };
-    if (isNew) {
-      const newId = 'C' + String(Date.now()).slice(-6);
-      s.campaigns.push({ id: newId, ...data });
-    } else {
-      Object.assign(c, data);
+    try {
+      if (isNew) {
+        await Api.post('/campaigns', payload);
+      } else {
+        await Api.patch(`/campaigns/${encodeURIComponent(c.campaign_id)}`, payload);
+      }
+      showToast('已儲存');
+      navigate('more/campaigns');
+    } catch (err) {
+      if (err.isAuthError) { navigate('login'); return; }
+      showToast(err.message);
     }
-    Store.save();
-    showToast('已儲存');
-    navigate('more/campaigns');
   });
 
   root.querySelector('#btn-delete')?.addEventListener('click', () => {
@@ -1006,11 +1176,15 @@ function renderCampaignEdit(id) {
       body: `「${escapeHtml(c.name)}」刪除後無法復原。`,
       danger: true,
       confirmText: '刪除',
-      onConfirm: () => {
-        s.campaigns = s.campaigns.filter(x => x.id !== c.id);
-        Store.save();
-        showToast('已刪除檔期');
-        navigate('more/campaigns');
+      onConfirm: async () => {
+        try {
+          await Api.del(`/campaigns/${encodeURIComponent(c.campaign_id)}`);
+          showToast('已刪除檔期');
+          navigate('more/campaigns');
+        } catch (err) {
+          if (err.isAuthError) { navigate('login'); return; }
+          showToast(err.message);
+        }
       }
     });
   });
@@ -1020,19 +1194,33 @@ function renderCampaignEdit(id) {
       title: '確定要結束此檔期？',
       body: '結束後顧客端將無法再看到此檔期的商品。',
       confirmText: '結束檔期',
-      onConfirm: () => {
-        c.status = 'ended';
-        Store.save();
-        showToast('已結束檔期');
-        navigate('more/campaigns');
+      onConfirm: async () => {
+        try {
+          await Api.patch(`/campaigns/${encodeURIComponent(c.campaign_id)}`, { status: 'ended' });
+          showToast('已結束檔期');
+          navigate('more/campaigns');
+        } catch (err) {
+          if (err.isAuthError) { navigate('login'); return; }
+          showToast(err.message);
+        }
       }
     });
   });
 }
 
 // ================== 🏪 店家資料 ==================
-function renderShop() {
-  const s = Store.state;
+async function renderShop() {
+  loadingPage({ title: '店家資料', back: 'more' });
+
+  let settingsData;
+  try {
+    settingsData = await Api.get('/settings');
+  } catch (err) {
+    handleLoadError(err, { title: '店家資料', back: 'more', retry: renderShop });
+    return;
+  }
+  const s = settingsData.settings || {};
+
   setContent(`
     ${topbar({ title: '店家資料', back: 'more' })}
     <div class="page">
@@ -1040,17 +1228,11 @@ function renderShop() {
         <div class="section-title">基本資訊</div>
         <div class="field">
           <label class="field-label">店名</label>
-          <input class="field-input" id="f-shopname" value="${escapeHtml(s.shop.name)}" />
-        </div>
-        <div class="field">
-          <div class="photo-upload">
-            <div class="icon">🖼️</div>
-            <div>點擊上傳 Logo（展示版不可上傳）</div>
-          </div>
+          <input class="field-input" id="f-shopname" value="${escapeHtml(s.shop_name || '')}" />
         </div>
         <div class="field">
           <label class="field-label">簡介</label>
-          <textarea class="field-textarea" id="f-intro" style="min-height:80px;">${escapeHtml(s.shop.intro)}</textarea>
+          <textarea class="field-textarea" id="f-intro" style="min-height:80px;">${escapeHtml(s.shop_intro || '')}</textarea>
         </div>
       </div>
 
@@ -1058,15 +1240,15 @@ function renderShop() {
         <div class="section-title">聯絡資訊</div>
         <div class="field">
           <label class="field-label">LINE 官方帳號</label>
-          <input class="field-input" id="f-line" value="${escapeHtml(s.shop.line)}" />
+          <input class="field-input" id="f-line" value="${escapeHtml(s.shop_line || '')}" />
         </div>
         <div class="field">
           <label class="field-label">電話</label>
-          <input class="field-input" id="f-phone" value="${escapeHtml(s.shop.phone)}" />
+          <input class="field-input" id="f-phone" value="${escapeHtml(s.shop_phone || '')}" />
         </div>
         <div class="field">
           <label class="field-label">地址</label>
-          <input class="field-input" id="f-address" value="${escapeHtml(s.shop.address)}" />
+          <input class="field-input" id="f-address" value="${escapeHtml(s.shop_address || '')}" />
         </div>
       </div>
 
@@ -1074,15 +1256,23 @@ function renderShop() {
         <div class="section-title">匯款資訊</div>
         <div class="field">
           <label class="field-label">銀行</label>
-          <input class="field-input" id="f-bank" value="${escapeHtml(s.shop.bank)}" />
+          <input class="field-input" id="f-bank" value="${escapeHtml(s.bank_name || '')}" />
         </div>
         <div class="field">
           <label class="field-label">帳號</label>
-          <input class="field-input" id="f-bankaccount" value="${escapeHtml(s.shop.bankAccount)}" />
+          <input class="field-input" id="f-bankaccount" value="${escapeHtml(s.bank_account || '')}" />
         </div>
         <div class="field">
           <label class="field-label">戶名</label>
-          <input class="field-input" id="f-bankowner" value="${escapeHtml(s.shop.bankOwner)}" />
+          <input class="field-input" id="f-bankowner" value="${escapeHtml(s.bank_owner || '')}" />
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">宅配</div>
+        <div class="field">
+          <label class="field-label">運費（元）</label>
+          <input class="field-input" id="f-shipping" type="number" inputmode="numeric" value="${escapeHtml(s.shipping_fee || '0')}" />
         </div>
       </div>
 
@@ -1092,41 +1282,57 @@ function renderShop() {
     </div>
   `);
 
-  root.querySelector('#btn-save').addEventListener('click', () => {
-    Object.assign(s.shop, {
-      name: root.querySelector('#f-shopname').value.trim(),
-      intro: root.querySelector('#f-intro').value.trim(),
-      line: root.querySelector('#f-line').value.trim(),
-      phone: root.querySelector('#f-phone').value.trim(),
-      address: root.querySelector('#f-address').value.trim(),
-      bank: root.querySelector('#f-bank').value.trim(),
-      bankAccount: root.querySelector('#f-bankaccount').value.trim(),
-      bankOwner: root.querySelector('#f-bankowner').value.trim()
-    });
-    Store.save();
-    showToast('店家資料已儲存');
+  root.querySelector('#btn-save').addEventListener('click', async () => {
+    try {
+      await Api.patch('/settings', {
+        shop_name: root.querySelector('#f-shopname').value.trim(),
+        shop_intro: root.querySelector('#f-intro').value.trim(),
+        shop_line: root.querySelector('#f-line').value.trim(),
+        shop_phone: root.querySelector('#f-phone').value.trim(),
+        shop_address: root.querySelector('#f-address').value.trim(),
+        bank_name: root.querySelector('#f-bank').value.trim(),
+        bank_account: root.querySelector('#f-bankaccount').value.trim(),
+        bank_owner: root.querySelector('#f-bankowner').value.trim(),
+        shipping_fee: Number(root.querySelector('#f-shipping').value) || 0,
+      });
+      showToast('店家資料已儲存');
+    } catch (err) {
+      if (err.isAuthError) { navigate('login'); return; }
+      showToast(err.message);
+    }
   });
 }
 
 // ================== 🔴 預購開關 ==================
-function renderToggle() {
-  const s = Store.state;
+async function renderToggle() {
+  loadingPage({ title: '預購開關', back: 'more' });
+
+  let settingsData;
+  try {
+    settingsData = await Api.get('/settings');
+  } catch (err) {
+    handleLoadError(err, { title: '預購開關', back: 'more', retry: renderToggle });
+    return;
+  }
+  const s = settingsData.settings || {};
+  const preorderOpen = isSettingTrue(s.preorder_open);
+
   setContent(`
     ${topbar({ title: '預購開關', back: 'more' })}
     <div class="page">
       <div class="card toggle-hero">
-        <div class="state-icon">${s.preorderOpen ? '🟢' : '🔴'}</div>
-        <div class="state-title">${s.preorderOpen ? '預購開放中' : '預購已暫停'}</div>
-        <div class="state-sub">${s.preorderOpen ? '顧客可正常瀏覽並下單' : '顧客端將顯示暫停訊息，無法送出訂單'}</div>
+        <div class="state-icon">${preorderOpen ? '🟢' : '🔴'}</div>
+        <div class="state-title">${preorderOpen ? '預購開放中' : '預購已暫停'}</div>
+        <div class="state-sub">${preorderOpen ? '顧客可正常瀏覽並下單' : '顧客端將顯示暫停訊息，無法送出訂單'}</div>
         <div class="switch-wrap">
-          <div class="switch big ${s.preorderOpen ? 'on' : ''}" id="f-toggle"></div>
+          <div class="switch big ${preorderOpen ? 'on' : ''}" id="f-toggle"></div>
         </div>
       </div>
 
       <div class="section" style="margin-top:20px;">
         <div class="section-title">暫停時顧客端顯示訊息</div>
         <div class="field">
-          <textarea class="field-textarea" id="f-pausemsg" style="min-height:90px;">${escapeHtml(s.pauseMessage)}</textarea>
+          <textarea class="field-textarea" id="f-pausemsg" style="min-height:90px;">${escapeHtml(s.pause_message || '')}</textarea>
         </div>
         <button class="btn btn-outline" id="btn-save-msg">儲存暫停訊息</button>
       </div>
@@ -1134,12 +1340,16 @@ function renderToggle() {
   `);
 
   root.querySelector('#f-toggle').addEventListener('click', () => {
-    confirmTogglePreorder();
+    confirmTogglePreorder(preorderOpen, () => renderToggle());
   });
-  root.querySelector('#btn-save-msg').addEventListener('click', () => {
-    s.pauseMessage = root.querySelector('#f-pausemsg').value;
-    Store.save();
-    showToast('暫停訊息已儲存');
+  root.querySelector('#btn-save-msg').addEventListener('click', async () => {
+    try {
+      await Api.patch('/settings', { pause_message: root.querySelector('#f-pausemsg').value });
+      showToast('暫停訊息已儲存');
+    } catch (err) {
+      if (err.isAuthError) { navigate('login'); return; }
+      showToast(err.message);
+    }
   });
 }
 
