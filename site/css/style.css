@@ -137,6 +137,7 @@ a { color: inherit; }
 .state-icon {
   font-size: 40px;
   margin: 0 0 8px;
+  text-align: center;
 }
 
 .state-text {
