@@ -812,6 +812,26 @@ async function handleUpdateOrder(request, env, orderId) {
   });
 }
 
+// DELETE /orders/:order_id（Phase 6 新增）：老闆永久刪除一筆訂單（連同它在 Order_Items 的品項明細）。
+// 跟「取消訂單」（PATCH order_status=cancelled）不一樣：取消只是改狀態、資料還留著；
+// 這支是真的從 Google Sheets 上把這幾列拿掉，用在測試訂單、輸入錯誤等要徹底移除的情況。
+async function handleDeleteOrder(env, orderId) {
+  const { accessToken, spreadsheetId } = await getAuthedContext(env);
+  const found = await findRowByKey(accessToken, spreadsheetId, "Orders", "order_id", orderId);
+  if (!found) {
+    return json({ ok: false, error: `找不到訂單：${orderId}` }, { status: 404 });
+  }
+
+  const itemRows = await getRowsWithNumbers(accessToken, spreadsheetId, "Order_Items");
+  const thisOrderItems = itemRows.filter((i) => i.order_id === orderId);
+  if (thisOrderItems.length) {
+    await deleteRows(accessToken, spreadsheetId, "Order_Items", thisOrderItems.map((i) => i.__rowNumber));
+  }
+  await deleteRows(accessToken, spreadsheetId, "Orders", [found.rowNumber]);
+
+  return json({ ok: true });
+}
+
 // PATCH /settings：老闆改公告、開關預購、改店家資料等單一設定值。
 // Settings 分頁是 key-value 格式（欄位「setting_key」「setting_value」），這支可以一次更新多組。
 // 傳入的 key 如果 Settings 裡已經有就更新該列，沒有就新增一列（upsert）。
@@ -1007,6 +1027,10 @@ export default {
       if (orderMatch && request.method === "PATCH") {
         if (!(await isAuthorized(request, env))) return unauthorized();
         return await handleUpdateOrder(request, env, decodeURIComponent(orderMatch[1]));
+      }
+      if (orderMatch && request.method === "DELETE") {
+        if (!(await isAuthorized(request, env))) return unauthorized();
+        return await handleDeleteOrder(env, decodeURIComponent(orderMatch[1]));
       }
 
       if (url.pathname === "/products" && request.method === "POST") {

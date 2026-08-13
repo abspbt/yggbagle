@@ -462,6 +462,10 @@ npm run deploy
 - 找不到該 `order_id` 回 HTTP 404
 - 成功回傳更新後的訂單內容，含 `delivery_method`／`shipping_fee`／`delivery_address`（這支目前不能改這三個欄位，只能在下單當下由 `POST /orders` 決定，這裡只是原樣回傳），不含 `items`，品項明細請用 `GET /orders`
 
+### `DELETE /orders/:order_id`（Phase 6 新增）
+
+永久刪除一筆訂單，連同它在 `Order_Items` 的品項明細一起刪掉。跟「取消訂單」（`PATCH order_status=cancelled`，資料還留著只是改狀態）不一樣，這支是真的把 Google Sheets 上的列拿掉，用在測試訂單、輸入錯誤等要徹底移除的情況，**刪除後無法復原**。找不到該 `order_id` 回 HTTP 404，成功回傳 `{ "ok": true }`。
+
 ### `PATCH /settings`
 
 改公告、開關預購、改店家資料等單一設定值。`Settings` 分頁是 key-value 格式，欄位是 **`setting_key`、`setting_value`**（已對照過 Phase 2 實際建好的 Sheets），這支可以一次更新多組 key，Sheets 裡已經有的 key 會更新該列，沒有的話會新增一列（upsert）。
@@ -628,7 +632,7 @@ Token 是 Worker 自己用 `TOKEN_SECRET` 簽出來的一串「到期時間 + HM
 ## 檔案結構
 
 - `wrangler.toml`：Worker 設定（名稱、非機密環境變數）
-- `src/index.js`：Worker 進入點，包含讀取 API（`/api/test-sheets`、`/products`、`/campaigns`、`/settings`、`/orders` 的 GET、`/admin/products`、`/admin/campaigns`）、寫入 API（`POST /orders`、`POST /products`、`PATCH /products/:id`、`DELETE /products/:id`、`POST /campaigns`、`PATCH /campaigns/:id`、`DELETE /campaigns/:id`、`PATCH /orders/:id`、`PATCH /settings`），以及 `POST /auth/login` PIN 登入
+- `src/index.js`：Worker 進入點，包含讀取 API（`/api/test-sheets`、`/products`、`/campaigns`、`/settings`、`/orders` 的 GET、`/admin/products`、`/admin/campaigns`）、寫入 API（`POST /orders`、`POST /products`、`PATCH /products/:id`、`DELETE /products/:id`、`POST /campaigns`、`PATCH /campaigns/:id`、`DELETE /campaigns/:id`、`PATCH /orders/:id`、`DELETE /orders/:id`、`PATCH /settings`），以及 `POST /auth/login` PIN 登入
 - `src/auth.js`：老闆登入用的短期 token 簽發與驗證（HMAC-SHA256，純 Web Crypto API，無額外套件、不需要 D1/KV）
 - `src/googleAuth.js`：用 Service Account JSON 金鑰換 Google API access token（RS256 JWT 簽章，純 Web Crypto API，無額外套件）
 - `src/sheets.js`：呼叫 Google Sheets API 讀寫資料——`getSheetRows` 把整張表轉成物件陣列、`getRowsWithNumbers` 是同一件事但每筆多帶 Sheets 上的實際列號、`appendRows` 附加新列、`findRowByKey` 依欄位值找到某一列、`updateRow` 覆寫指定列、`deleteRows` 刪除指定的多列（Phase 6 新增，給檔期／商品刪除用）
