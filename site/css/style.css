@@ -1,4 +1,5 @@
 :root {
+  --step-gap: 16px;
   --color-primary: #D97B3F;
   --color-primary-dark: #B85C28;
   --color-bg: #FAF6F0;
@@ -173,7 +174,7 @@ a { color: inherit; }
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   padding: 4px 14px 12px;
-  margin-bottom: 16px;
+  margin-bottom: var(--step-gap);
   box-shadow: 0 6px 16px -8px rgba(46, 38, 30, 0.25);
 }
 
@@ -359,7 +360,7 @@ a { color: inherit; }
 
 .step {
   margin-bottom: 28px;
-  scroll-margin-top: calc(var(--safe-top) + var(--topinfo-h) + var(--cartbar-h));
+  scroll-margin-top: calc(var(--safe-top) + var(--topinfo-h) + var(--cartbar-h) + var(--step-gap));
 }
 
 /* ---------- 商品卡片（單一規格）---------- */
