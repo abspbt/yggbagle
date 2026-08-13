@@ -33,7 +33,11 @@ html, body {
     "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
   -webkit-tap-highlight-color: transparent;
   width: 100%;
-  overflow-x: hidden;
+  /* 不能用 overflow-x: hidden——瀏覽器規則會把沒明講的 overflow-y 自動升級成
+     auto，讓 html/body 變成自己的捲動容器，位在裡面的 position: sticky
+     元素（購物車列、品牌識別區）就會整個失效、跟著內容一起被捲走。
+     overflow-x: clip 效果一樣（擋住水平溢出），但不會建立捲動容器。 */
+  overflow-x: clip;
 }
 
 body {
