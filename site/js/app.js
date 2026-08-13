@@ -42,6 +42,7 @@
     customerNote: document.getElementById("customer-note"),
 
     stepSummary: document.getElementById("step-summary"),
+    summaryCustomerInfo: document.getElementById("summary-customer-info"),
     summaryItems: document.getElementById("summary-items"),
     summaryTotalAmount: document.getElementById("summary-total-amount"),
     submitError: document.getElementById("submit-error"),
@@ -623,6 +624,11 @@
     }
   }
 
+  function isValidPhone(value) {
+    var digits = value.replace(/[^0-9]/g, "");
+    return digits.length >= 8;
+  }
+
   function validateCurrentStep() {
     var key = state.currentStepKey;
     if (key === "products") {
@@ -635,7 +641,9 @@
       if (!els.deliveryAddress.value.trim()) return "請填寫收件地址";
     } else if (key === "form") {
       if (!els.customerName.value.trim()) return "請填寫姓名";
-      if (!els.customerPhone.value.trim()) return "請填寫電話";
+      var phone = els.customerPhone.value.trim();
+      if (!phone) return "請填寫電話";
+      if (!isValidPhone(phone)) return "電話號碼看起來不太對，請確認後再試一次";
     }
     return null;
   }
@@ -672,6 +680,12 @@
   // ---------- 訂單摘要 ----------
 
   function renderSummary() {
+    els.summaryCustomerInfo.innerHTML =
+      bankRow("姓名", els.customerName.value.trim()) +
+      bankRow("電話", els.customerPhone.value.trim()) +
+      bankRow("取貨方式", fulfillmentSummaryText()) +
+      bankRow("備註", els.customerNote.value.trim());
+
     els.summaryItems.innerHTML = "";
     cartItems().forEach(function (item) {
       var row = document.createElement("div");
@@ -710,7 +724,7 @@
 
     if (
       !els.customerName.value.trim() ||
-      !els.customerPhone.value.trim() ||
+      !isValidPhone(els.customerPhone.value.trim()) ||
       cartCount() === 0 ||
       !state.deliveryMethod ||
       !deliveryValid
