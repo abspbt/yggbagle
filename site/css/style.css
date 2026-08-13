@@ -634,11 +634,6 @@ a { color: inherit; }
   color: var(--color-text);
 }
 
-.btn-small {
-  padding: 10px;
-  font-size: 14px;
-}
-
 /* ---------- LINE 官方帳號連結 ---------- */
 /* 照 LINE 官方商標使用規範：不能仿製 LINE 的圖示/UI 按鈕造型（規範裡明確列為違規範例），
    所以這裡只用純文字連結，不放任何仿商標圖案；背景色沿用官方指定的識別色 #06C755

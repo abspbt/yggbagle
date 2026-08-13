@@ -49,7 +49,6 @@
 
     stepDone: document.getElementById("step-done"),
     doneOrderId: document.getElementById("done-order-id"),
-    copyOrderIdBtn: document.getElementById("copy-order-id"),
     doneFulfillment: document.getElementById("done-fulfillment"),
     doneOrderItems: document.getElementById("done-order-items"),
     doneOrderTotal: document.getElementById("done-order-total"),
@@ -911,19 +910,6 @@
     } catch {
       setShareStatus("複製失敗，請直接截圖保留這個畫面。");
     }
-  });
-
-  els.copyOrderIdBtn.addEventListener("click", async function () {
-    var text = els.doneOrderId.textContent;
-    try {
-      await navigator.clipboard.writeText(text);
-      els.copyOrderIdBtn.textContent = "已複製！";
-    } catch {
-      els.copyOrderIdBtn.textContent = "複製失敗，請手動選取";
-    }
-    setTimeout(function () {
-      els.copyOrderIdBtn.textContent = "複製訂單編號";
-    }, 2000);
   });
 
   els.restartBtn.addEventListener("click", function () {
