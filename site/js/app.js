@@ -182,9 +182,12 @@
 
   function buildLineUrl(handle) {
     if (!handle) return "";
-    return handle.indexOf("http") === 0
-      ? handle
-      : "https://line.me/R/ti/p/" + encodeURIComponent(handle);
+    // 從 Google Sheets 貼上時常見的資料問題：前後多餘空白、中文輸入法把「@」打成全形「＠」、
+    // 忘記帶「@」開頭。這裡統一修正，避免加好友連結因為這些小狀況失效。
+    var cleaned = String(handle).trim().replace(/＠/g, "@");
+    if (cleaned.indexOf("http") === 0) return cleaned;
+    if (cleaned.charAt(0) !== "@") cleaned = "@" + cleaned;
+    return "https://line.me/R/ti/p/" + encodeURIComponent(cleaned);
   }
 
   function applyShopInfo() {
