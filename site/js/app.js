@@ -149,6 +149,11 @@
     document.documentElement.style.setProperty("--topinfo-h", els.topInfo.offsetHeight + "px");
   }
 
+  function syncTabsHeight() {
+    var h = els.categoryTabs.classList.contains("hidden") ? 0 : els.categoryTabs.offsetHeight;
+    document.documentElement.style.setProperty("--tabs-h", h + "px");
+  }
+
   async function fetchJson(path, options) {
     var res = await fetch(API_BASE + path, options);
     var data;
@@ -169,6 +174,7 @@
     els.cartSummary.classList.add("hidden");
     els.categoryTabs.classList.add("hidden");
     syncCartBarHeight();
+    syncTabsHeight();
 
     try {
       var results = await Promise.all([
@@ -280,6 +286,7 @@
       els.categoryTabs.classList.add("hidden");
       els.categoryTabs.innerHTML = "";
       syncCartBarHeight();
+      syncTabsHeight();
       return;
     }
     if (!state.activeCategory || cats.indexOf(state.activeCategory) === -1) {
@@ -300,6 +307,7 @@
       els.categoryTabs.appendChild(btn);
     });
     syncCartBarHeight();
+    syncTabsHeight();
   }
 
   function filteredProducts() {
@@ -635,6 +643,7 @@
     var show = state.currentStepKey === "products" && categories().length >= 2;
     els.categoryTabs.classList.toggle("hidden", !show);
     syncCartBarHeight();
+    syncTabsHeight();
   }
 
   function goToStepKey(key, opts) {
@@ -713,9 +722,11 @@
     // 收不到這種變化，--topinfo-h 會停在舊值，下面的購物車列就會跟著錯位。
     new ResizeObserver(syncTopInfoHeight).observe(els.topInfo, { box: "border-box" });
     new ResizeObserver(syncCartBarHeight).observe(els.cartSummary, { box: "border-box" });
+    new ResizeObserver(syncTabsHeight).observe(els.categoryTabs, { box: "border-box" });
   } else {
     window.addEventListener("resize", syncCartBarHeight);
     window.addEventListener("resize", syncTopInfoHeight);
+    window.addEventListener("resize", syncTabsHeight);
   }
   els.cartDetails.addEventListener("toggle", syncCartBarHeight);
 
