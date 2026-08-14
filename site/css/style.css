@@ -632,6 +632,11 @@ a { color: inherit; }
   padding: 10px 12px;
   background: var(--color-card);
   color: var(--color-text);
+  /* 手機鍵盤跳出來時，瀏覽器會自動捲動頁面讓輸入框保持在鍵盤上方可見，這個
+     自動捲動也會被固定區塊（品牌區/購物車列/分類頁籤）擋住視野，讓輸入框
+     卡在固定區塊後面看不到——用跟 .step 一樣的 scroll-margin-top 讓瀏覽器
+     知道上方有多少空間是被固定區塊佔用的，捲動落點才會留出淨空間。 */
+  scroll-margin-top: calc(var(--topinfo-h) + var(--cartbar-h) + var(--tabs-h) + var(--step-gap));
 }
 
 .field textarea { resize: vertical; }
