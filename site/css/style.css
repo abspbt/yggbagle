@@ -63,7 +63,10 @@ a { color: inherit; }
 #app {
   max-width: 560px;
   margin: 0 auto;
-  padding: calc(16px + var(--safe-top)) 16px calc(32px + var(--safe-bottom));
+  /* 上方留白改由 .top-info 自己的 padding-top 負責，#app 這裡必須是 0——
+     只要 #app 有 padding-top，裡面 sticky 的 .top-info 自然位置就會比它
+     卡住的位置低，捲動時就會先往上跑那段距離才鎖住（就是「最上方會滑動」）。 */
+  padding: 0 16px calc(32px + var(--safe-bottom));
   min-height: 100vh;
 }
 
@@ -71,7 +74,11 @@ a { color: inherit; }
 
 .top-info {
   position: sticky;
-  top: var(--safe-top);
+  /* top 必須等於這個元素的自然位置，兩者一致才不會有位移。因為上方留白已經
+     改成這個元素自己的 padding-top（#app 的 padding-top 是 0），它的外框
+     本來就從畫面最頂端開始，所以 top 是 0，不是 var(--safe-top)。 */
+  top: 0;
+  padding-top: calc(16px + var(--safe-top));
   z-index: 6;
   background: var(--color-bg);
   display: flow-root;
@@ -168,7 +175,9 @@ a { color: inherit; }
 
 .cart-summary {
   position: sticky;
-  top: calc(var(--safe-top) + var(--topinfo-h));
+  /* --topinfo-h 取自 offsetHeight，已經含 .top-info 的 padding-top
+     （16px + safe-top），這裡不能再加一次 safe-top。 */
+  top: var(--topinfo-h);
   z-index: 5;
   background: var(--color-card);
   border: 1px solid var(--color-border);
@@ -309,14 +318,21 @@ a { color: inherit; }
 
 .tabs {
   position: sticky;
-  top: calc(var(--safe-top) + var(--topinfo-h) + var(--cartbar-h));
+  top: calc(var(--topinfo-h) + var(--cartbar-h));
   z-index: 4;
   display: flex;
   gap: 8px;
   overflow-x: auto;
   background: var(--color-bg);
-  padding: 6px 0 10px;
-  margin-top: 14px;
+  /* 跟購物車列之間的間距全部做成自己的 padding-top，不用 margin——margin 會讓
+     自然位置比卡住的位置低，捲動時就會晃那一段。
+     負的 margin-top 抵銷 .cart-summary 的 margin-bottom（--step-gap），讓這個
+     元素緊貼在購物車列下方；那段間距改由 padding-top 補回來，視覺完全一樣，
+     但這段區域現在屬於 .tabs、會被它的背景蓋住，捲動的內容不會從縫裡穿過去。
+     padding-top 是 6px（自身原有）+ --step-gap：原本這裡還有 margin-top: 14px，
+     但相鄰的 margin 會折疊成 max(16, 14) = 16px，那個 14px 其實從來沒生效過。 */
+  margin-top: calc(-1 * var(--step-gap));
+  padding: calc(6px + var(--step-gap)) 0 10px;
   margin-bottom: 4px;
   scrollbar-width: none;
 }
@@ -360,7 +376,7 @@ a { color: inherit; }
 
 .step {
   margin-bottom: 28px;
-  scroll-margin-top: calc(var(--safe-top) + var(--topinfo-h) + var(--cartbar-h) + var(--step-gap));
+  scroll-margin-top: calc(var(--topinfo-h) + var(--cartbar-h) + var(--step-gap));
 }
 
 /* ---------- 商品卡片（單一規格）---------- */

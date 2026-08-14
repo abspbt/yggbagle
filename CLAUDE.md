@@ -29,6 +29,9 @@
 - ✅ 顧客網站宅配加上「僅限台灣本島」提示（見下方「近期優化備註」，PR #40）：選取貨方式
   按鈕文字、地址欄位下方提示、填地址時偵測離島關鍵字跳警示彈窗（可選「取消」或「開啟
   LINE 聯絡老闆」）
+- ✅ 修正顧客網站最上方固定區塊捲動時會滑動的問題（見下方「近期優化備註」，PR #42 + #43）：
+  真正的根因是 `#app` 的 `padding-top` 讓 sticky 元素的「自然位置」比「卡住的位置」低
+  16px，捲動時一定會先跑完這 16px 才鎖住（PR #43 才修對；PR #42 當時誤判成 JS 的問題）
 - ⏭️ 下一步：Phase 7（部署 + 網域設定）——顧客網站 `site/` 目前完全還沒部署到任何正式網址
   （只在本機瀏覽器測試過完整流程）；老闆後台 PWA 目前暫時掛在 GitHub Pages
   （`https://abspbt.github.io/yggbagle/`），要不要正式搬到 Cloudflare Pages 還沒決定；
@@ -123,7 +126,7 @@
 - 已透過 GitHub Pages 暫時掛上線（`https://abspbt.github.io/yggbagle/`）方便手機測試，
   這不是正式部署路線，Phase 7 要決定要不要搬到 Cloudflare Pages
 
-**近期優化備註**（Phase 6 併入 main 之後陸續完成的小修正與體驗優化，各自獨立 PR #15～#40，
+**近期優化備註**（Phase 6 併入 main 之後陸續完成的小修正與體驗優化，各自獨立 PR #15～#43，
 不算獨立 Phase，一併記在這裡方便查）：
 - LINE 官方帳號加好友連結（顧客網站+後台首頁都有），修正過連結容錯處理（`＠`全形符號、
   忘記帶`@`等常見貼上問題）
@@ -169,6 +172,28 @@
   嚴格擋單機制**，地址寫法不規則、縣名寫法不同都可能抓不到；LINE 按鈕也只是開啟既有的
   加好友連結，不會自動幫顧客把訊息送出去。併入 main 後老闆有直接在 GitHub 上微調過警示
   彈窗的文案用字
+- 顧客網站最上方的固定區塊（品牌識別區／購物車列／分類頁籤）捲動時會往上滑一小段才卡住，
+  手機、電腦瀏覽器都會。這題修了兩輪，**第一輪 PR #42 是誤判、沒修到**，記在這裡避免以後
+  又往同個方向找：
+  - ❌ PR #42（誤判）：以為是 `site/js/app.js` 用 `window` 的 `resize` 事件同步固定區塊
+    高度，被手機 Safari 網址列收合觸發而反覆重排。改成 `ResizeObserver` 後老闆實測「狀況
+    還是一樣」。這個改動本身無害（`ResizeObserver` 確實比較合適），就留著沒退回
+  - ✅ PR #43（真正的根因）：`position: sticky` 元素只要「自然位置」跟「卡住的位置」對不
+    起來，就一定會先滑完那段差距才鎖住。`#app` 有 `padding-top: calc(16px + safe-top)`，
+    所以 `.top-info` 的自然位置在 `16px + safe-top`，但它的 `top` 只寫 `var(--safe-top)`
+    —— 差了 16px，這 16px 就是老闆看到的位移（截圖縮放 3.4 倍後約 54px，跟實測吻合）
+  - 修法：把上方留白從 `#app` 的 `padding-top` 搬進 `.top-info` 自己的 `padding-top`，
+    sticky 改成 `top: 0`，兩者對齊後位移歸零。連帶把下游的 `.cart-summary`、`.tabs`、
+    `.step` 的 `top`/`scroll-margin-top` 拿掉重複加的 `safe-top`（`--topinfo-h` 取自
+    `offsetHeight`，已含 padding），`.tabs` 則用負 `margin-top` 抵銷 `.cart-summary` 的
+    `margin-bottom`、間距改由自己的 `padding-top` 補回來（不能只是把 `top` 加大，那會在
+    購物車列下方留一條透明縫，捲動的內容會從縫裡穿過去）
+  - `ResizeObserver` 一併補上 `{ box: "border-box" }`：預設的 `content-box` 不含 padding，
+    而 `.top-info` 的 `padding-top` 含 `safe-area-inset-top`（轉螢幕方向會變），用預設值
+    會收不到這種變化、`--topinfo-h` 停在舊值，下面的購物車列就會錯位
+  - 用 headless Chromium 逐格捲動實測：修正前三個固定區塊各滑動 16px／16px／32px，修正後
+    全部為 0；並比對修正前後的間距與截圖，版面完全一致，PR #35/#36 修好的「自動捲動落點
+    不被蓋住」也維持原本的 16px 淨空間
 
 Phase 0 各頁 Wireframe 定案內容已整理成交接摘要，見對話紀錄
 （今日 Dashboard、商品管理、訂單列表+付款確認、公告設定、
