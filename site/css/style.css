@@ -339,6 +339,14 @@ a { color: inherit; }
   scrollbar-width: none;
 }
 
+/* 購物車是空的時候購物車列會整個隱藏（display: none），上面那個負的 margin-top
+   就沒有 margin-bottom 可以抵銷，頁籤的自然位置會比卡住的位置高 --step-gap，
+   卡住時等於往下壓在後面的內容上（步驟標題「1. 選商品」就會被蓋掉一半）。
+   購物車列一隱藏就把負 margin 拿掉，自然位置跟卡住位置才對得起來。 */
+#cart-summary.hidden + .tabs {
+  margin-top: 0;
+}
+
 .tabs::-webkit-scrollbar { display: none; }
 
 .tab {
