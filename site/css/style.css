@@ -607,6 +607,12 @@ a { color: inherit; }
 
 .field textarea { resize: vertical; }
 
+.field-hint {
+  margin: -6px 0 14px;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+
 /* ---------- 訂單摘要 ---------- */
 
 .summary-items {
@@ -798,6 +804,48 @@ a { color: inherit; }
   justify-content: center;
   margin-top: 1px;
 }
+
+/* ---------- 警示彈窗（例如宅配地址是離島）---------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(46, 38, 30, 0.45);
+  animation: overlay-fadein 0.15s ease-out;
+}
+
+@keyframes overlay-fadein {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.overlay-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--color-card);
+  border-radius: var(--radius);
+  padding: 24px 20px 20px;
+  text-align: center;
+  box-shadow: 0 12px 32px -8px rgba(46, 38, 30, 0.35);
+}
+
+.overlay-icon {
+  font-size: 28px;
+  margin: 0 0 10px;
+}
+
+.overlay-text {
+  font-size: 14.5px;
+  line-height: 1.7;
+  margin: 0 0 20px;
+}
+
+.overlay-actions .btn:last-child { margin-bottom: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
