@@ -86,6 +86,19 @@ a { color: inherit; }
   display: flow-root;
 }
 
+/* 打字時（手機鍵盤跳出來）品牌識別區改成不固定，讓它跟著內容捲走，把螢幕空間
+   讓給輸入框——鍵盤跳出後可視高度只剩約 300px，固定區塊佔 268px 的話輸入框
+   一定會被蓋住。購物車列維持固定（上一步／下一步要隨時能按）。
+   --topinfo-h 一併設回 0：購物車列的 top、各種 scroll-margin-top 都是用這個
+   變數算的，品牌區不再固定就不該再算它的高度，不然會多留一大段空白。
+   （宣告在 body 上會蓋掉 JS 寫在 html 上的 inline 值——不同元素，自己的宣告
+   優先於繼承來的值。） */
+body.keyboard-open { --topinfo-h: 0px; }
+
+body.keyboard-open .top-info {
+  position: static;
+}
+
 .brand-header {
   display: flex;
   align-items: center;
