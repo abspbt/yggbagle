@@ -86,6 +86,19 @@ a { color: inherit; }
   display: flow-root;
 }
 
+/* 打字時（手機鍵盤跳出來）品牌識別區改成不固定，讓它跟著內容捲走，把螢幕空間
+   讓給輸入框——鍵盤跳出後可視高度只剩約 300px，固定區塊佔 268px 的話輸入框
+   一定會被蓋住。購物車列維持固定（上一步／下一步要隨時能按）。
+   --topinfo-h 一併設回 0：購物車列的 top、各種 scroll-margin-top 都是用這個
+   變數算的，品牌區不再固定就不該再算它的高度，不然會多留一大段空白。
+   （宣告在 body 上會蓋掉 JS 寫在 html 上的 inline 值——不同元素，自己的宣告
+   優先於繼承來的值。） */
+body.keyboard-open { --topinfo-h: 0px; }
+
+body.keyboard-open .top-info {
+  position: static;
+}
+
 .brand-header {
   display: flex;
   align-items: center;
@@ -632,6 +645,11 @@ a { color: inherit; }
   padding: 10px 12px;
   background: var(--color-card);
   color: var(--color-text);
+  /* 手機鍵盤跳出來時，瀏覽器會自動捲動頁面讓輸入框保持在鍵盤上方可見，這個
+     自動捲動也會被固定區塊（品牌區/購物車列/分類頁籤）擋住視野，讓輸入框
+     卡在固定區塊後面看不到——用跟 .step 一樣的 scroll-margin-top 讓瀏覽器
+     知道上方有多少空間是被固定區塊佔用的，捲動落點才會留出淨空間。 */
+  scroll-margin-top: calc(var(--topinfo-h) + var(--cartbar-h) + var(--tabs-h) + var(--step-gap));
 }
 
 .field textarea { resize: vertical; }

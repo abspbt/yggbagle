@@ -730,6 +730,65 @@
   }
   els.cartDetails.addEventListener("toggle", syncCartBarHeight);
 
+  // ---------- 打字時讓出畫面空間 ----------
+  // 手機鍵盤跳出來會吃掉大半個螢幕，只剩約 300～340px 可視高度，但上方固定區塊
+  // （品牌識別區 + 購物車列）就佔了約 268px，等於八成的空間都被佔住，輸入框根本
+  // 沒地方擺，一定會被蓋住。所以打字的時候把品牌識別區改成不固定（讓它跟著捲走），
+  // 只留購物車列固定（上一步／下一步要隨時能按），空間就夠了。
+  // 只在「鍵盤真的跳出來（可視高度變矮）」時才這樣做——桌機瀏覽器畫面夠高，
+  // 不需要動，不然點一下輸入框品牌區就跑掉會很突兀。
+  var isTyping = false;
+
+  function updateKeyboardState() {
+    // 沒有 visualViewport（舊瀏覽器）就無從判斷鍵盤在不在，一律當成有跳出來，
+    // 讓出空間比被蓋住好。
+    var shortScreen = window.visualViewport ? window.visualViewport.height < 560 : true;
+    var wasOpen = document.body.classList.contains("keyboard-open");
+    var open = isTyping && shortScreen;
+    document.body.classList.toggle("keyboard-open", open);
+
+    // 鍵盤是「跳出來之後」才讓 visualViewport 變矮的，比 focus 事件晚，所以瀏覽器
+    // 自己那次「把輸入框捲進可視範圍」是在空間還沒讓出來之前算的，落點會是錯的。
+    // 這裡等版面讓出空間後再捲一次，落點才會對（scroll-margin-top 會被算進去）。
+    if (open !== wasOpen && open) {
+      var el = document.activeElement;
+      if (isTextField(el)) {
+        requestAnimationFrame(function () {
+          el.scrollIntoView({ block: "nearest" });
+        });
+      }
+    }
+  }
+
+  // 只認「會叫出鍵盤」的欄位。取貨方式那一步的 radio 也是 <input>，但點它不會
+  // 跳鍵盤，不該因此把品牌識別區收起來（小螢幕橫向時可能誤判）。
+  var NON_TEXT_INPUT_TYPES = ["radio", "checkbox", "button", "submit", "reset", "file", "range", "color"];
+
+  function isTextField(el) {
+    if (!el) return false;
+    if (el.tagName === "TEXTAREA") return true;
+    if (el.tagName !== "INPUT") return false;
+    return NON_TEXT_INPUT_TYPES.indexOf((el.type || "text").toLowerCase()) === -1;
+  }
+
+  document.addEventListener("focusin", function (e) {
+    if (!isTextField(e.target)) return;
+    isTyping = true;
+    updateKeyboardState();
+  });
+
+  document.addEventListener("focusout", function (e) {
+    if (!isTextField(e.target)) return;
+    isTyping = false;
+    updateKeyboardState();
+  });
+
+  if (window.visualViewport) {
+    // 鍵盤跳出/收起只會改變 visualViewport 的高度，不會觸發一般的 resize，
+    // 所以要另外監聽這個。
+    window.visualViewport.addEventListener("resize", updateKeyboardState);
+  }
+
   els.retryBtn.addEventListener("click", init);
 
   // ---------- 訂單摘要 ----------
