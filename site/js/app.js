@@ -61,7 +61,29 @@
     doneLineLink: document.getElementById("done-line-link"),
     restartBtn: document.getElementById("restart-btn"),
     headerLineLink: document.getElementById("header-line-link"),
+
+    islandWarning: document.getElementById("island-warning"),
+    islandWarningCancel: document.getElementById("island-warning-cancel"),
+    islandWarningLine: document.getElementById("island-warning-line"),
   };
+
+  // 只做關鍵字比對提醒，不是嚴格擋單機制——打法不規則、縣名寫法不同都可能抓不到，
+  // 只是多一層提醒，避免顧客沒注意到宅配僅限台灣本島就選了離島地址下單。
+  var OUTLYING_ISLAND_KEYWORDS = ["澎湖", "金門", "馬祖", "連江", "蘭嶼", "琉球"];
+
+  function matchesOutlyingIsland(address) {
+    return OUTLYING_ISLAND_KEYWORDS.some(function (kw) {
+      return address.indexOf(kw) !== -1;
+    });
+  }
+
+  function showIslandWarning() {
+    els.islandWarning.classList.remove("hidden");
+  }
+
+  function hideIslandWarning() {
+    els.islandWarning.classList.add("hidden");
+  }
 
   var stepSections = {
     products: els.stepProducts,
@@ -211,6 +233,9 @@
     } else {
       els.announcement.classList.add("hidden");
     }
+
+    var islandLineUrl = buildLineUrl(s.shop_line);
+    if (islandLineUrl) els.islandWarningLine.href = islandLineUrl;
 
     var headerLineUrl = buildLineUrl(s.shop_line);
     if (headerLineUrl) {
@@ -657,6 +682,10 @@
       alert(err);
       return;
     }
+    if (state.currentStepKey === "address" && matchesOutlyingIsland(els.deliveryAddress.value.trim())) {
+      showIslandWarning();
+      return;
+    }
     var steps = activeSteps();
     var idx = steps.indexOf(state.currentStepKey);
     if (idx === -1 || idx === steps.length - 1) return;
@@ -672,6 +701,8 @@
 
   els.cartBackBtn.addEventListener("click", goBack);
   els.cartNextBtn.addEventListener("click", goNext);
+  els.islandWarningCancel.addEventListener("click", hideIslandWarning);
+  els.islandWarningLine.addEventListener("click", hideIslandWarning);
   window.addEventListener("resize", syncCartBarHeight);
   window.addEventListener("resize", syncTopInfoHeight);
   els.cartDetails.addEventListener("toggle", syncCartBarHeight);

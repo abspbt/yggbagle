@@ -88,7 +88,7 @@
           <input type="radio" name="delivery_method" value="delivery">
           <span class="delivery-icon">🚚</span>
           <span class="delivery-text">
-            <span class="delivery-name">低溫宅配</span>
+            <span class="delivery-name">低溫宅配（僅限台灣本島）</span>
             <span id="delivery-fee-sub" class="delivery-sub">運費另計</span>
           </span>
         </label>
@@ -108,6 +108,7 @@
         <span>收件地址</span>
         <input type="text" id="delivery-address" name="delivery_address" placeholder="請輸入宅配收件地址（含郵遞區號）">
       </label>
+      <p class="field-hint">目前僅配送台灣本島地區，離島恕無法配送</p>
     </section>
 
     <!-- Step：填資料 -->
@@ -183,6 +184,18 @@
     </section>
   </main>
 </div>
+
+<div id="island-warning" class="overlay hidden">
+  <div class="overlay-card">
+    <p class="overlay-icon" aria-hidden="true">📍</p>
+    <p class="overlay-text">目前只提供台灣本島配送，如果要配送到其他地方，請與老闆討論</p>
+    <div class="overlay-actions">
+      <button type="button" id="island-warning-cancel" class="btn btn-secondary">取消</button>
+      <a id="island-warning-line" class="btn btn-line" href="#" target="_blank" rel="noopener">開啟 LINE 聯絡老闆</a>
+    </div>
+  </div>
+</div>
+
 <script src="js/app.js"></script>
 </body>
 </html>
