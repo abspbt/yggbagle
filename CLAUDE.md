@@ -29,6 +29,9 @@
 - ✅ 顧客網站宅配加上「僅限台灣本島」提示（見下方「近期優化備註」，PR #40）：選取貨方式
   按鈕文字、地址欄位下方提示、填地址時偵測離島關鍵字跳警示彈窗（可選「取消」或「開啟
   LINE 聯絡老闆」）
+- ✅ 修正顧客網站固定區塊在手機捲動時滑動的問題（見下方「近期優化備註」，PR #42）：
+  改用 `ResizeObserver` 取代 `window resize` 監聽，避免手機 Safari 網址列收合觸發不必要
+  的重排
 - ⏭️ 下一步：Phase 7（部署 + 網域設定）——顧客網站 `site/` 目前完全還沒部署到任何正式網址
   （只在本機瀏覽器測試過完整流程）；老闆後台 PWA 目前暫時掛在 GitHub Pages
   （`https://abspbt.github.io/yggbagle/`），要不要正式搬到 Cloudflare Pages 還沒決定；
@@ -123,7 +126,7 @@
 - 已透過 GitHub Pages 暫時掛上線（`https://abspbt.github.io/yggbagle/`）方便手機測試，
   這不是正式部署路線，Phase 7 要決定要不要搬到 Cloudflare Pages
 
-**近期優化備註**（Phase 6 併入 main 之後陸續完成的小修正與體驗優化，各自獨立 PR #15～#40，
+**近期優化備註**（Phase 6 併入 main 之後陸續完成的小修正與體驗優化，各自獨立 PR #15～#42，
 不算獨立 Phase，一併記在這裡方便查）：
 - LINE 官方帳號加好友連結（顧客網站+後台首頁都有），修正過連結容錯處理（`＠`全形符號、
   忘記帶`@`等常見貼上問題）
@@ -169,6 +172,12 @@
   嚴格擋單機制**，地址寫法不規則、縣名寫法不同都可能抓不到；LINE 按鈕也只是開啟既有的
   加好友連結，不會自動幫顧客把訊息送出去。併入 main 後老闆有直接在 GitHub 上微調過警示
   彈窗的文案用字
+- 顧客網站品牌識別區/購物車列（`position: sticky` 固定區塊）在手機瀏覽器捲動時會滑動/
+  跳動：根因是 `site/js/app.js` 原本用 `window.addEventListener("resize", ...)` 同步
+  固定區塊高度，但手機 Safari 捲動時網址列自動收合/展開也會觸發 `resize`，導致每次捲動
+  都反覆強制重排、固定區塊跟著一起晃；改用 `ResizeObserver` 只監看這兩個區塊「自己」的
+  高度變化（不受網址列收合影響），沒有 `ResizeObserver` 支援時保留 `window resize` 當
+  fallback（PR #42）
 
 Phase 0 各頁 Wireframe 定案內容已整理成交接摘要，見對話紀錄
 （今日 Dashboard、商品管理、訂單列表+付款確認、公告設定、
