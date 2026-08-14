@@ -17,6 +17,7 @@
   --radius-sm: 10px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
+  --app-max-width: 480px;
   color-scheme: light;
 }
 
@@ -55,6 +56,8 @@ button {
 a { color: inherit; text-decoration: none; }
 
 #app {
+  max-width: var(--app-max-width);
+  margin: 0 auto;
   min-height: 100vh;
   padding-bottom: calc(64px + var(--safe-bottom));
 }
@@ -303,8 +306,10 @@ a { color: inherit; text-decoration: none; }
 .tabbar {
   position: fixed;
   bottom: 0;
-  left: 0;
-  right: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: var(--app-max-width);
   z-index: 30;
   background: rgba(255,255,255,0.96);
   backdrop-filter: blur(10px);
@@ -824,8 +829,10 @@ a { color: inherit; text-decoration: none; }
 .pin-version {
   position: fixed;
   bottom: calc(12px + var(--safe-bottom));
-  left: 0;
-  right: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: var(--app-max-width);
   text-align: center;
   font-size: 11px;
   color: var(--color-text-muted);
@@ -835,8 +842,10 @@ a { color: inherit; text-decoration: none; }
 .update-banner {
   position: fixed;
   top: calc(8px + var(--safe-top));
-  left: 12px;
-  right: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 24px);
+  max-width: calc(var(--app-max-width) - 24px);
   z-index: 150;
   background: var(--color-primary);
   color: #fff;
