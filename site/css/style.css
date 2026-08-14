@@ -20,6 +20,8 @@
   --safe-top: env(safe-area-inset-top, 0px);
   --cartbar-h: 0px;
   --topinfo-h: 0px;
+  /* 分類頁籤也是固定區塊，隱藏時由 JS 設回 0px */
+  --tabs-h: 0px;
   color-scheme: light;
 }
 
@@ -376,7 +378,10 @@ a { color: inherit; }
 
 .step {
   margin-bottom: 28px;
-  scroll-margin-top: calc(var(--topinfo-h) + var(--cartbar-h) + var(--step-gap));
+  /* 自動捲動（scrollIntoView）的落點要把「所有」固定區塊的高度都算進來，不然
+     步驟標題會落在固定區塊底下被蓋住。選商品那一步分類頁籤是顯示的，所以
+     --tabs-h 一定要算——只算品牌區+購物車列的話，標題會整個被頁籤蓋掉。 */
+  scroll-margin-top: calc(var(--topinfo-h) + var(--cartbar-h) + var(--tabs-h) + var(--step-gap));
 }
 
 /* ---------- 商品卡片（單一規格）---------- */
