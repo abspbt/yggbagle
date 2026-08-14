@@ -69,7 +69,13 @@ a { color: inherit; }
      只要 #app 有 padding-top，裡面 sticky 的 .top-info 自然位置就會比它
      卡住的位置低，捲動時就會先往上跑那段距離才鎖住（就是「最上方會滑動」）。 */
   padding: 0 16px calc(32px + var(--safe-bottom));
+  /* 100vh 在 iOS Safari 是「網址列收起來時」的高度，比實際看得到的範圍高
+     50～60px，所以就算內容其實塞得下，頁面還是會多出那段可以捲的空間——
+     使用者不小心滑一下，內容就往上跑到固定區塊底下（步驟標題被購物車列蓋住
+     就是這樣來的）。100dvh 用的是「當下實際可視高度」，內容塞得下時就完全
+     不能捲。舊瀏覽器不認得 dvh，會沿用前一行的 100vh。 */
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ---------- 品牌識別區 + 公告（固定在畫面最上方，不隨捲動消失）---------- */
@@ -385,6 +391,49 @@ body.keyboard-open .top-info {
 .step-title {
   font-size: 17px;
   margin: 0 0 12px;
+  /* 步驟標題自己也跟著固定：內容真的比一個畫面長（例如「填寫聯絡資訊」「訂單
+     摘要」）時，只要往下捲一點，標題就會滑到購物車列底下被蓋住。改成 sticky
+     之後標題會停在購物車列（或分類頁籤）正下方，捲多遠都看得到自己在第幾步。
+     top 多加 4px 是為了讓標題跟上面的固定區塊之間留一點縫，不要黏在一起；
+     那 4px 的縫由 ::before 補上同色背景，捲動的內容才不會從縫裡穿過去。
+     只加 4px 不能再多——選商品那一步標題離分類頁籤的自然距離就只有 3.8px，
+     偏移值只要超過它，標題在還沒捲動時就已經是「卡住」狀態、位置會往下掉。
+     這裡刻意不用 padding/margin 做間距——標題是 .step 的第一個子元素，改動它的
+     margin 會跟 .step 的 margin 折疊、連帶影響捲動落點（scroll-margin-top）；
+     用 top + ::before 則完全不動版面，間距與落點跟修正前一模一樣。 */
+  position: sticky;
+  top: calc(var(--topinfo-h) + var(--cartbar-h) + var(--tabs-h) + 4px);
+  /* 比購物車列（5）、分類頁籤（4）低，才不會反過來蓋住它們 */
+  z-index: 3;
+  background: var(--color-bg);
+}
+
+/* 標題自己的背景只有文字那一行那麼高，捲動的內容會從上下兩側的空隙露出來
+   （上面 4px 的縫、下面 12px 的 margin），看起來像文字疊字。這個 ::before 把
+   標題上下的空隙一起補成同色背景：往上多蓋一段（那一段本來就被購物車列／
+   分類頁籤壓在上面，它們的 z-index 比較大，不會被蓋掉），往下蓋掉 margin 的
+   12px，內容捲到標題附近就會乾淨地被切掉。
+   z-index: -1 是為了讓它待在標題文字的後面（同一個 stacking context 裡）。 */
+.step-title::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -40px;
+  bottom: -12px;
+  background: var(--color-bg);
+  z-index: -1;
+}
+
+/* 打字時（手機鍵盤跳出來）畫面只剩約 300px，標題再固定就是又吃掉一段空間，
+   跟品牌識別區一樣讓它跟著捲走，把位置留給輸入框。 */
+body.keyboard-open .step-title {
+  position: static;
+}
+
+/* 標題不再是 positioned 元素，補背景的 ::before 會跑去貼別的祖先元素，直接關掉 */
+body.keyboard-open .step-title::before {
+  display: none;
 }
 
 .done-title {
@@ -395,6 +444,10 @@ body.keyboard-open .top-info {
   font-size: 20px;
   line-height: 1;
   text-align: center;
+  /* 完成頁沒有購物車列，標題的自然位置本來就緊貼在品牌識別區下方（那裡有公告
+     自己的 20px 留白當作間距），所以偏移值要設回 0——沿用 .step-title 的 +4px
+     的話，標題在還沒捲動時就已經是「卡住」狀態、位置會往下掉 4px。 */
+  top: var(--topinfo-h);
 }
 
 .step {
