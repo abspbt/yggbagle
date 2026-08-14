@@ -703,8 +703,17 @@
   els.cartNextBtn.addEventListener("click", goNext);
   els.islandWarningCancel.addEventListener("click", hideIslandWarning);
   els.islandWarningLine.addEventListener("click", hideIslandWarning);
-  window.addEventListener("resize", syncCartBarHeight);
-  window.addEventListener("resize", syncTopInfoHeight);
+  // 用 ResizeObserver 只監看這兩個固定區塊「自己的」高度變化（例如公告文字換行、
+  // 螢幕轉向），不要監聽 window 的 resize 事件——手機 Safari 捲動時網址列自動
+  // 收合/展開也會觸發 window resize，這會讓固定區塊在每次捲動時反覆重算高度、
+  // 強制重排，畫面上就會看到品牌識別區／購物車列一直「滑動」。
+  if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(syncTopInfoHeight).observe(els.topInfo);
+    new ResizeObserver(syncCartBarHeight).observe(els.cartSummary);
+  } else {
+    window.addEventListener("resize", syncCartBarHeight);
+    window.addEventListener("resize", syncTopInfoHeight);
+  }
   els.cartDetails.addEventListener("toggle", syncCartBarHeight);
 
   els.retryBtn.addEventListener("click", init);
