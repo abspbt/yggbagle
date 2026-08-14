@@ -34,6 +34,9 @@
   16px，捲動時一定會先跑完這 16px 才鎖住（PR #43 才修對；PR #42 當時誤判成 JS 的問題）
 - ✅ 接著修好「選商品」步驟標題被分類頁籤蓋住的問題（見下方「近期優化備註」，PR #44）：
   `.step` 的 `scroll-margin-top` 漏算分類頁籤高度，新增 `--tabs-h` 變數補上
+- ✅ 又修好「購物車是空的」時同一個標題被分類頁籤蓋住的另一種情況（見下方「近期優化
+  備註」，PR #45）：`.tabs` 的負 `margin-top` 沒考慮到購物車列隱藏時沒有 `margin-bottom`
+  可抵銷
 - ⏭️ 下一步：Phase 7（部署 + 網域設定）——顧客網站 `site/` 目前完全還沒部署到任何正式網址
   （只在本機瀏覽器測試過完整流程）；老闆後台 PWA 目前暫時掛在 GitHub Pages
   （`https://abspbt.github.io/yggbagle/`），要不要正式搬到 Cloudflare Pages 還沒決定；
