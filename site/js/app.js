@@ -708,8 +708,11 @@
   // 收合/展開也會觸發 window resize，這會讓固定區塊在每次捲動時反覆重算高度、
   // 強制重排，畫面上就會看到品牌識別區／購物車列一直「滑動」。
   if (typeof ResizeObserver !== "undefined") {
-    new ResizeObserver(syncTopInfoHeight).observe(els.topInfo);
-    new ResizeObserver(syncCartBarHeight).observe(els.cartSummary);
+    // 一定要指定 border-box：預設的 content-box 不含 padding，而 .top-info 的
+    // padding-top 含 safe-area-inset-top（轉螢幕方向會變），用 content-box 就
+    // 收不到這種變化，--topinfo-h 會停在舊值，下面的購物車列就會跟著錯位。
+    new ResizeObserver(syncTopInfoHeight).observe(els.topInfo, { box: "border-box" });
+    new ResizeObserver(syncCartBarHeight).observe(els.cartSummary, { box: "border-box" });
   } else {
     window.addEventListener("resize", syncCartBarHeight);
     window.addEventListener("resize", syncTopInfoHeight);
