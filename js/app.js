@@ -60,6 +60,39 @@ function taipeiToday() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
 }
 
+// 把 Sheets 讀回來的日期統一成 YYYY-MM-DD，方便直接用字串比大小。
+// 依儲存格格式可能拿到 "2026-08-15" 或 "2026/8/15"，兩種都吃得下；認不出來就回傳空字串，
+// 當成「沒有填結束日」處理（寧可維持開放，也不要誤判成已結束）。跟 Worker 端同一套規則。
+function normalizeDateString(value) {
+  const m = String(value == null ? '' : value).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (!m) return '';
+  return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+}
+
+// 檔期是不是「還在預購中」：status 要是 active，而且預購結束日還沒過
+// （end_date 當天仍算開放，隔天才關；沒填 end_date 就只看 status）。
+function isCampaignOngoing(c, today) {
+  if (!c || c.status !== 'active') return false;
+  const endDate = normalizeDateString(c.end_date);
+  if (!endDate) return true;
+  return endDate >= (today || taipeiToday());
+}
+
+// 顧客端現在到底能不能下單：老闆的手動開關 AND 至少有一個還在預購中的檔期。
+// 只要還有一個檔期沒結束就維持開放（同時有兩檔、其中一檔結束時不會被誤關）。
+function getPreorderState(settings, campaigns) {
+  const manualOpen = isSettingTrue((settings || {}).preorder_open);
+  const today = taipeiToday();
+  const ongoing = (campaigns || []).filter(c => isCampaignOngoing(c, today));
+  if (!manualOpen) {
+    return { open: false, reason: 'paused', label: '預購已暫停', ongoing };
+  }
+  if (ongoing.length === 0) {
+    return { open: false, reason: 'no_campaign', label: '目前無預購檔期', ongoing };
+  }
+  return { open: true, reason: 'open', label: '預購開放中', ongoing };
+}
+
 function showToast(msg) {
   const existing = document.querySelector('.toast');
   if (existing) existing.remove();
@@ -315,10 +348,20 @@ async function renderDashboard() {
   const products = productsData.products || [];
 
   const shopName = settings.shop_name || '歪嘴雞烘焙';
+  // preorderOpen 是老闆手動開關的狀態（點「預購開關」時要切換的就是它）；
+  // preorder 則是顧客端實際看到的狀態＝手動開關 AND 還有沒結束的檔期。
   const preorderOpen = isSettingTrue(settings.preorder_open);
+  const preorder = getPreorderState(settings, campaigns);
 
-  const activeCampaign = campaigns.find(c => c.status === 'active');
   const today = taipeiToday();
+  // 有多個檔期時，優先顯示「還在預購中」那一檔的已訂購量；都結束了才退回顯示最後一個
+  // status=active 的檔期（訂單還要備料出貨，數字留著給老闆看）。
+  const activeCampaign = preorder.ongoing[0]
+    || campaigns.filter(c => c.status === 'active').pop()
+    || null;
+  // 檔期狀態還掛著「進行中」，但預購結束日已經過了——底下的已訂購量還是照常顯示
+  // （訂單要備料出貨），只是加註一行提醒老闆這檔已經不收單了。
+  const activeCampaignEnded = !!activeCampaign && !isCampaignOngoing(activeCampaign, today);
   const todayOrders = orders.filter(o => (o.created_at || '').startsWith(today));
   const pendingPayment = orders.filter(o => o.payment_status === 'pending' && o.order_status !== 'picked_up' && o.order_status !== 'cancelled');
 
@@ -372,8 +415,8 @@ async function renderDashboard() {
         <div>
           <div class="brand-name">${escapeHtml(shopName)}</div>
           <div class="brand-status">
-            <span class="status-dot ${preorderOpen ? '' : 'paused'}"></span>
-            ${preorderOpen ? '預購開放中' : '預購已暫停'}
+            <span class="status-dot ${preorder.open ? '' : 'paused'}"></span>
+            ${preorder.label}
           </div>
         </div>
       </div>
@@ -403,6 +446,7 @@ async function renderDashboard() {
               <span>${orderedQty} / ${activeCampaign.total_quantity_cap || '不限'}</span>
             </div>
             <div class="progress-bar"><div class="progress-bar-fill" style="width:${orderedPct}%"></div></div>
+            ${activeCampaignEnded ? `<div class="field-hint" style="text-align:left; margin-top:8px;">預購期間已結束（${escapeHtml(activeCampaign.end_date || '')}），顧客端已停止收單</div>` : ''}
           </div>
         ` : `<div class="field-hint" style="text-align:left; margin-top:8px;">目前沒有進行中的檔期</div>`}
       </div>
@@ -1082,15 +1126,20 @@ async function renderCampaignsList() {
       .reduce((sum, item) => sum + item.quantity, 0);
   }
 
+  const today = taipeiToday();
+
   const cards = campaigns.map(c => {
     const ordered = orderedQty(c.campaign_id);
     const cap = c.total_quantity_cap || 0;
     const pct = cap ? Math.min(100, Math.round((ordered / cap) * 100)) : 0;
+    // 檔期狀態還是「進行中」，但預購結束日已經過了：顧客端其實已經停止收單，
+    // 這裡照實顯示「預購已結束」，免得老闆看到「進行中」以為還在收單。
+    const preorderEnded = c.status === 'active' && !isCampaignOngoing(c, today);
     return `
       <button class="card card-tap" data-nav="more/campaigns/${c.campaign_id}">
         <div class="order-card-top">
           <div class="order-customer">${escapeHtml(c.name)}</div>
-          <span class="badge ${CAMPAIGN_STATUS_BADGE[c.status] || ''}">${CAMPAIGN_STATUS_LABEL[c.status] || c.status}</span>
+          <span class="badge ${preorderEnded ? 'badge-ended' : (CAMPAIGN_STATUS_BADGE[c.status] || '')}">${preorderEnded ? '預購已結束' : (CAMPAIGN_STATUS_LABEL[c.status] || c.status)}</span>
         </div>
         <div class="order-line"><span>預購期間</span><span>${escapeHtml(c.start_date || '')} ~ ${escapeHtml(c.end_date || '')}</span></div>
         <div class="order-line"><span>取貨日</span><span>${(c.pickup_slots || []).map(s => s.date).join('、') || '—'}</span></div>
@@ -1415,26 +1464,37 @@ async function renderShop() {
 async function renderToggle() {
   loadingPage({ title: '預購開關', back: 'more' });
 
-  let settingsData;
+  let settingsData, campaignsData;
   try {
-    settingsData = await Api.get('/settings');
+    [settingsData, campaignsData] = await Promise.all([
+      Api.get('/settings'),
+      Api.get('/admin/campaigns'),
+    ]);
   } catch (err) {
     handleLoadError(err, { title: '預購開關', back: 'more', retry: renderToggle });
     return;
   }
   const s = settingsData.settings || {};
   const preorderOpen = isSettingTrue(s.preorder_open);
+  const preorder = getPreorderState(s, campaignsData.campaigns || []);
+
+  const stateSub = preorder.open
+    ? '顧客可正常瀏覽並下單'
+    : (preorder.reason === 'paused'
+      ? '顧客端將顯示暫停訊息，無法送出訂單'
+      : '所有檔期的預購期間都已結束，顧客端無法下單；新檔期開始後會自動恢復');
 
   setContent(`
     ${topbar({ title: '預購開關', back: 'more' })}
     <div class="page">
       <div class="card toggle-hero">
-        <div class="state-icon">${preorderOpen ? '🟢' : '🔴'}</div>
-        <div class="state-title">${preorderOpen ? '預購開放中' : '預購已暫停'}</div>
-        <div class="state-sub">${preorderOpen ? '顧客可正常瀏覽並下單' : '顧客端將顯示暫停訊息，無法送出訂單'}</div>
+        <div class="state-icon">${preorder.open ? '🟢' : '🔴'}</div>
+        <div class="state-title">${preorder.label}</div>
+        <div class="state-sub">${stateSub}</div>
         <div class="switch-wrap">
           <div class="switch big ${preorderOpen ? 'on' : ''}" id="f-toggle"></div>
         </div>
+        ${preorder.reason === 'no_campaign' ? `<div class="field-hint" style="margin-top:10px;">手動開關目前是「開放」，但沒有進行中的檔期，所以顧客端仍是關閉狀態。</div>` : ''}
       </div>
 
       <div class="section" style="margin-top:20px;">

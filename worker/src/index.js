@@ -115,8 +115,29 @@ function nowInTaipei() {
 
   return {
     dateCompact: `${parts.year}${parts.month}${parts.day}`,
+    dateISO: `${parts.year}-${parts.month}-${parts.day}`,
     isoLocal: `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}+08:00`,
   };
+}
+
+// 把 Sheets 讀回來的日期統一成 YYYY-MM-DD，方便直接用字串比大小。
+// 依儲存格格式，同一欄可能回傳 "2026-08-15" 或 "2026/8/15"，兩種都吃得下；
+// 認不出來就回傳空字串，當成「沒有填結束日」處理——寧可讓預購維持開放，
+// 也不要因為讀錯格式就誤判成已結束、把顧客擋在門外。
+function normalizeDateString(value) {
+  const m = String(value == null ? "" : value).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (!m) return "";
+  return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+}
+
+// 檔期是不是「還在預購中」：status 要是 active，而且預購結束日還沒過。
+// end_date 當天仍然算開放（隔天才關），沒填 end_date 就只看 status。
+// 這是「預購有沒有開放」的單一判斷依據，公開 API 跟老闆後台都走這個函式。
+function isCampaignOngoing(campaign, today) {
+  if (!campaign || campaign.status !== "active") return false;
+  const endDate = normalizeDateString(campaign.end_date);
+  if (!endDate) return true;
+  return endDate >= today;
 }
 
 // 訂單編號格式 ORD-YYYYMMDD-XXXX，同一天內流水號遞增。
@@ -193,6 +214,10 @@ async function handleCreateOrder(request, env) {
   const campaign = campaigns.find((c) => c.campaign_id === campaign_id);
   if (!campaign || campaign.status !== "active") {
     return json({ ok: false, error: "此檔期目前未開放預購" }, { status: 400 });
+  }
+  // 預購結束日過了就不再收單，不用等老闆手動把檔期改成 ended。
+  if (!isCampaignOngoing(campaign, nowInTaipei().dateISO)) {
+    return json({ ok: false, error: "本檔期預購已結束，請等待下一檔期" }, { status: 400 });
   }
 
   if (deliveryMethod === "pickup") {
@@ -931,17 +956,30 @@ async function handleUpdateSettings(request, env) {
 // Settings 分頁是 key-value 格式，這裡全部回傳（裡面沒有顧客個資，都是可公開的店家資訊）。
 async function handleGetSettings(env) {
   const { accessToken, spreadsheetId } = await getAuthedContext(env);
-  const rows = await getSheetRows(accessToken, spreadsheetId, "Settings");
+  const [rows, campaigns] = await Promise.all([
+    getSheetRows(accessToken, spreadsheetId, "Settings"),
+    getSheetRows(accessToken, spreadsheetId, "Campaigns"),
+  ]);
 
   const settings = {};
   for (const row of rows) {
     if (row.setting_key) settings[row.setting_key] = row.setting_value;
   }
 
+  // 「顧客現在到底能不能下單」＝ 老闆的手動開關 AND 至少有一個還在預購中的檔期。
+  // 這兩個計算欄位不存在 Sheets 裡，每次讀取即時算（沿用 Phase 2「不存彙總欄位」的原則）：
+  // 檔期結束的隔天自動關閉、下一檔開跑又自動恢復，老闆不用記得手動去撥開關。
+  const today = nowInTaipei().dateISO;
+  const hasOngoingCampaign = campaigns.some((c) => isCampaignOngoing(c, today));
+  const manualOpen = String(settings.preorder_open || "").trim().toUpperCase() === "TRUE";
+
+  settings.has_ongoing_campaign = hasOngoingCampaign ? "TRUE" : "FALSE";
+  settings.preorder_open_effective = manualOpen && hasOngoingCampaign ? "TRUE" : "FALSE";
+
   return json({ ok: true, settings });
 }
 
-// GET /campaigns：目前 active 的檔期，含各自的取貨時段。
+// GET /campaigns：目前還在預購中的檔期（status=active 且預購結束日還沒過），含各自的取貨時段。
 async function handleCampaigns(env) {
   const { accessToken, spreadsheetId } = await getAuthedContext(env);
   const [campaigns, slots] = await Promise.all([
@@ -949,8 +987,9 @@ async function handleCampaigns(env) {
     getSheetRows(accessToken, spreadsheetId, "PickupSlots"),
   ]);
 
+  const today = nowInTaipei().dateISO;
   const active = campaigns
-    .filter((c) => c.status === "active")
+    .filter((c) => isCampaignOngoing(c, today))
     .map((c) => ({
       campaign_id: c.campaign_id,
       name: c.name,
@@ -977,8 +1016,9 @@ async function handleProducts(env) {
     getSheetRows(accessToken, spreadsheetId, "Order_Items"),
   ]);
 
+  const today = nowInTaipei().dateISO;
   const activeCampaignIds = new Set(
-    campaigns.filter((c) => c.status === "active").map((c) => c.campaign_id)
+    campaigns.filter((c) => isCampaignOngoing(c, today)).map((c) => c.campaign_id)
   );
 
   const countedOrderIds = new Set(
