@@ -200,7 +200,9 @@ npm run deploy
 
 ### `GET /campaigns`
 
-回傳目前 `status` 是 `active` 的檔期，每個檔期底下帶著自己的取貨時段（`PickupSlots`）。
+回傳目前**還在預購中**的檔期，每個檔期底下帶著自己的取貨時段（`PickupSlots`）。
+
+「還在預購中」＝ `status` 是 `active`，**而且** `end_date`（預購結束日）還沒過（台北時區，`end_date` 當天仍然算開放，隔天才會自動消失）。`end_date` 空白代表不看日期，只看 `status`。這個判斷邏輯（`isCampaignOngoing()`）同時用在 `GET /products`、`POST /orders` 跟 `GET /settings` 的 `preorder_open_effective`。
 
 ```json
 {
@@ -223,7 +225,7 @@ npm run deploy
 
 ### `GET /products`
 
-回傳目前 active 檔期、且上架中（`active` 勾選）的商品。`ordered_quantity` 是即時從 `Order_Items` 加總算出來的已訂購量（只算該商品所屬檔期、且訂單狀態不是 `cancelled` 的訂單），**不是**存在 Sheets 裡的欄位，延續 Phase 2 「不存彙總欄位」的原則。
+回傳目前**還在預購中**的檔期（判斷方式見 `GET /campaigns`：`status` 是 `active` 且 `end_date` 還沒過）、且上架中（`active` 勾選）的商品。`ordered_quantity` 是即時從 `Order_Items` 加總算出來的已訂購量（只算該商品所屬檔期、且訂單狀態不是 `cancelled` 的訂單），**不是**存在 Sheets 裡的欄位，延續 Phase 2 「不存彙總欄位」的原則。
 
 `variant_group`／`variant_label` 是顧客介面改版新增的大小規格欄位（見下方「商品大小規格（`Products` 新增欄位）」），沒有設定時回傳空字串 `""`。
 
@@ -266,13 +268,18 @@ npm run deploy
     "announcement_visible": "TRUE",
     "preorder_open": "TRUE",
     "pause_message": "目前暫停接單，恢復時間將於粉絲頁公告，謝謝您的支持！",
-    "shipping_fee": "150"
+    "shipping_fee": "150",
+    "has_ongoing_campaign": "TRUE",
+    "preorder_open_effective": "TRUE"
   }
 }
 ```
 
 - 老闆用 `PATCH /settings`（需登入）改的值，這支馬上就會讀到最新的
 - `announcement_visible`、`preorder_open` 是文字 `"TRUE"`/`"FALSE"`（跟 Sheets 資料驗證下拉選單的值一致），前端要自己轉成布林值判斷
+- `has_ongoing_campaign`、`preorder_open_effective` 是**即時算出來的欄位，Sheets 裡沒有這兩列，也不能用 `PATCH /settings` 修改**：
+  - `has_ongoing_campaign`：現在有沒有「還在預購中」的檔期（判斷方式見 `GET /campaigns`）。同時有多個檔期時，只要其中一個還沒結束就是 `TRUE`
+  - `preorder_open_effective`：顧客實際能不能下單 ＝ `preorder_open`（老闆手動開關）**且** `has_ongoing_campaign`。檔期結束的隔天會自動變成 `FALSE`，下一個檔期開跑又自動變回 `TRUE`，老闆不用手動去撥開關；手動開關則保留「臨時暫停」的用途，關掉時一律以關掉為準
 - `shipping_fee`（顧客介面改版新增）：宅配運費金額，沒有設定這個 key 時不會出現在回應裡，前端會當作 0
 
 ### `GET /orders`
@@ -394,6 +401,10 @@ npm run deploy
 ```
 
 ```json
+{ "ok": false, "error": "本檔期預購已結束，請等待下一檔期" }
+```
+
+```json
 { "ok": false, "error": "缺少必要欄位（delivery_address）" }
 ```
 
@@ -484,7 +495,7 @@ npm run deploy
 | `bank_owner` | 匯款戶名 |
 | `announcement_text` | 公告文字 |
 | `announcement_visible` | 公告是否顯示（`TRUE`/`FALSE`） |
-| `preorder_open` | 預購開關（`TRUE`/`FALSE`） |
+| `preorder_open` | 預購開關（`TRUE`/`FALSE`），老闆手動的臨時暫停開關；顧客端實際狀態還要看有沒有進行中的檔期，見 `GET /settings` 的 `preorder_open_effective` |
 | `pause_message` | 預購暫停時顯示的訊息 |
 | `shipping_fee` | 宅配運費金額（純數字，例如 `150`），顧客介面改版新增 |
 
