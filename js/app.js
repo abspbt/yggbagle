@@ -60,6 +60,14 @@ function taipeiToday() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
 }
 
+// 檔期是否「實際上」還在開放預購：跟 Worker API 的 isCampaignActive() 邏輯一致，
+// status 存的是老闆手動設的值，但只要 end_date 一過就視為已結束，不用等老闆手動改狀態。
+function isCampaignActive(c) {
+  if (!c || c.status !== 'active') return false;
+  if (!c.end_date) return true;
+  return taipeiToday() <= c.end_date;
+}
+
 function showToast(msg) {
   const existing = document.querySelector('.toast');
   if (existing) existing.remove();
@@ -317,7 +325,7 @@ async function renderDashboard() {
   const shopName = settings.shop_name || '歪嘴雞烘焙';
   const preorderOpen = isSettingTrue(settings.preorder_open);
 
-  const activeCampaign = campaigns.find(c => c.status === 'active');
+  const activeCampaign = campaigns.find(isCampaignActive);
   const today = taipeiToday();
   const todayOrders = orders.filter(o => (o.created_at || '').startsWith(today));
   const pendingPayment = orders.filter(o => o.payment_status === 'pending' && o.order_status !== 'picked_up' && o.order_status !== 'cancelled');

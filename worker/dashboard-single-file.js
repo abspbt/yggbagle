@@ -450,6 +450,19 @@ function nowInTaipei() {
   };
 }
 
+// 台北時區今天的日期，格式 YYYY-MM-DD，跟 Campaigns.end_date 的格式一樣，方便直接字串比較。
+function todayDateStrTaipei() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei" }).format(new Date());
+}
+
+// 檔期是否「實際上」還在開放預購：status 存的是老闆手動設的值，但只要 end_date 一過，
+// 不管 status 有沒有手動改成 ended，都視為已結束——這樣老闆不用每個檔期結束都手動去改狀態。
+function isCampaignActive(campaign, todayStr) {
+  if (!campaign || campaign.status !== "active") return false;
+  if (!campaign.end_date) return true;
+  return todayStr <= campaign.end_date;
+}
+
 // 訂單編號格式 ORD-YYYYMMDD-XXXX，同一天內流水號遞增。
 // 這裡是簡單的「讀了再寫」，跟 Phase 5 的總量控制一樣不做原子鎖：
 // 極端情況下（幾乎同時送出兩張訂單）可能撞號重試，機率很低，先接受這個風險。
@@ -522,7 +535,7 @@ async function handleCreateOrder(request, env) {
   ]);
 
   const campaign = campaigns.find((c) => c.campaign_id === campaign_id);
-  if (!campaign || campaign.status !== "active") {
+  if (!isCampaignActive(campaign, todayDateStrTaipei())) {
     return json({ ok: false, error: "此檔期目前未開放預購" }, { status: 400 });
   }
 
@@ -1280,8 +1293,9 @@ async function handleCampaigns(env) {
     getSheetRows(accessToken, spreadsheetId, "PickupSlots"),
   ]);
 
+  const todayStr = todayDateStrTaipei();
   const active = campaigns
-    .filter((c) => c.status === "active")
+    .filter((c) => isCampaignActive(c, todayStr))
     .map((c) => ({
       campaign_id: c.campaign_id,
       name: c.name,
@@ -1308,8 +1322,9 @@ async function handleProducts(env) {
     getSheetRows(accessToken, spreadsheetId, "Order_Items"),
   ]);
 
+  const todayStr = todayDateStrTaipei();
   const activeCampaignIds = new Set(
-    campaigns.filter((c) => c.status === "active").map((c) => c.campaign_id)
+    campaigns.filter((c) => isCampaignActive(c, todayStr)).map((c) => c.campaign_id)
   );
 
   const countedOrderIds = new Set(
