@@ -1065,6 +1065,13 @@ const CAMPAIGN_STATUS_BADGE = { active: 'badge-active', upcoming: 'badge-upcomin
 // 避免團購做久了舊檔期愈堆愈多——資料本身完全不受影響，純粹是這頁預設要不要顯示。
 let campaignListShowEnded = false;
 
+// 檔期列表顯示用的「有效狀態」：status 存的是老闆手動設的值，但只要 end_date 一過，
+// 不管有沒有手動改成 ended，畫面上都當已結束顯示，跟 isCampaignActive() 的判斷一致。
+function effectiveCampaignStatus(c) {
+  if (c.status === 'active' && !isCampaignActive(c)) return 'ended';
+  return c.status;
+}
+
 async function renderCampaignsList() {
   loadingPage({ title: '預購檔期設定', back: 'more' });
 
@@ -1081,7 +1088,7 @@ async function renderCampaignsList() {
 
   const allCampaigns = campaignsData.campaigns || [];
   const orders = ordersData.orders || [];
-  const campaigns = (campaignListShowEnded ? allCampaigns : allCampaigns.filter(c => c.status !== 'ended')).slice().reverse();
+  const campaigns = (campaignListShowEnded ? allCampaigns : allCampaigns.filter(c => effectiveCampaignStatus(c) !== 'ended')).slice().reverse();
 
   function orderedQty(campaignId) {
     return orders
@@ -1098,7 +1105,7 @@ async function renderCampaignsList() {
       <button class="card card-tap" data-nav="more/campaigns/${c.campaign_id}">
         <div class="order-card-top">
           <div class="order-customer">${escapeHtml(c.name)}</div>
-          <span class="badge ${CAMPAIGN_STATUS_BADGE[c.status] || ''}">${CAMPAIGN_STATUS_LABEL[c.status] || c.status}</span>
+          <span class="badge ${CAMPAIGN_STATUS_BADGE[effectiveCampaignStatus(c)] || ''}">${CAMPAIGN_STATUS_LABEL[effectiveCampaignStatus(c)] || effectiveCampaignStatus(c)}</span>
         </div>
         <div class="order-line"><span>預購期間</span><span>${escapeHtml(c.start_date || '')} ~ ${escapeHtml(c.end_date || '')}</span></div>
         <div class="order-line"><span>取貨日</span><span>${(c.pickup_slots || []).map(s => s.date).join('、') || '—'}</span></div>
