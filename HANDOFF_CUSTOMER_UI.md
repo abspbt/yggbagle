@@ -3,7 +3,7 @@
 我在做「歪嘴雞烘焙預購系統」，技術棧：Cloudflare Pages + Worker + Google Sheets
 （不需要 D1 / Durable Objects，不做逐件庫存鎖定，付款是人工核對截圖，非串金流 API）。
 
-**Repo**：`abspbt/yggbagle`
+**Repo**：`abspbt/yjg-order`（原名 `abspbt/yggbagle`，已於 2026-08-17 改名，GitHub 會自動把舊網址轉過來）
 **Worker 網址**：`https://ygg-hidden-star-9fe8.drum3126.workers.dev`
 
 **⚠️ 重要：我不熟悉終端機下指令，都是用網頁操作。Worker 部署請用 Cloudflare Dashboard

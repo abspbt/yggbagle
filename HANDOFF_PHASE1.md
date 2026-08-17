@@ -3,7 +3,7 @@
 我在做「歪嘴雞烘焙預購系統」，技術棧：Cloudflare Pages + Worker + Google Sheets
 （不需要 D1 / Durable Objects，不做逐件庫存鎖定，付款是人工核對截圖，非串金流 API）。
 
-**Repo**：`abspbt/yggbagle`
+**Repo**：`abspbt/yjg-order`（原名 `abspbt/yggbagle`，已於 2026-08-17 改名，GitHub 會自動把舊網址轉過來）
 **分支**：`claude/bakery-preorder-phase-1-x4zghn`
 
 ## 已完成 Phase 0
@@ -61,7 +61,7 @@ icons/          — icon-192 / icon-512 / apple-touch-icon（老闆提供的小�
 
 ```
 我在做「歪嘴雞烘焙預購系統」，技術棧：Cloudflare Pages + Worker + Google Sheets。
-Repo：abspbt/yggbagle，分支：claude/bakery-preorder-phase-1-x4zghn
+Repo：abspbt/yjg-order（原名 abspbt/yggbagle），分支：claude/bakery-preorder-phase-1-x4zghn
 
 已完成 Phase 0（Wireframe）與 Phase 1（假資料版 PWA，8 頁全部做完，含 PIN 登入、
 備料總覽、GitHub Pages 部署路徑修正、自訂 icon）。詳細內容見附件 HANDOFF_PHASE1.md。
