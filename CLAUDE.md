@@ -42,7 +42,7 @@
   同時有多個檔期時只要一檔還沒結束就維持開放
 - ⏭️ 下一步：Phase 7（部署 + 網域設定）——顧客網站 `site/` 目前完全還沒部署到任何正式網址
   （只在本機瀏覽器測試過完整流程）；老闆後台 PWA 目前暫時掛在 GitHub Pages
-  （`https://abspbt.github.io/yggbagle/`），要不要正式搬到 Cloudflare Pages 還沒決定；
+  （`https://abspbt.github.io/yjg-order/`），要不要正式搬到 Cloudflare Pages 還沒決定；
   網域也還沒購買/串接。詳細規劃、待辦清單見 `HANDOFF_PHASE7_DEPLOY.md`
 
 **Phase 3-1 備註**：
@@ -131,7 +131,7 @@
 - 訂單列表/詳情頁已顯示取貨方式（自取/宅配）、宅配收件地址、自取取貨時段、宅配運費，
   列表也可以用取貨方式篩選
 - PIN 登入、四段訂單狀態（新訂單/已備料/已取貨/已取消）、確認付款、訂單永久刪除都已可用
-- 已透過 GitHub Pages 暫時掛上線（`https://abspbt.github.io/yggbagle/`）方便手機測試，
+- 已透過 GitHub Pages 暫時掛上線（`https://abspbt.github.io/yjg-order/`）方便手機測試，
   這不是正式部署路線，Phase 7 要決定要不要搬到 Cloudflare Pages
 
 **近期優化備註**（Phase 6 併入 main 之後陸續完成的小修正與體驗優化，各自獨立 PR #15～#44，

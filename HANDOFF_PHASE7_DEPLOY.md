@@ -3,7 +3,7 @@
 我在做「歪嘴雞烘焙預購系統」，技術棧：Cloudflare Pages + Worker + Google Sheets
 （不需要 D1 / Durable Objects，不做逐件庫存鎖定，付款是人工核對截圖，非串金流 API）。
 
-**Repo**：`abspbt/yggbagle`
+**Repo**：`abspbt/yjg-order`（原名 `abspbt/yggbagle`，已於 2026-08-17 改名，GitHub 會自動把舊網址轉過來）
 **Worker 網址（已上線）**：`https://ygg-hidden-star-9fe8.drum3126.workers.dev`
 
 **⚠️ 重要：我不熟悉終端機下指令，都是用網頁操作。Cloudflare 相關設定請優先用
@@ -26,7 +26,7 @@ Cloudflare Pages，掛上正式網域（如果我有的話），並確認 Worker
 - Phase 0～6 全部完成，Google Sheets 表結構、Worker API、顧客網站前端、老闆後台 PWA
   都已經串好真實資料，功能可以正常運作（見下方「目前進度」完整清單）
 - **顧客網站（`site/`）目前完全沒有部署到任何網址**，只在本機瀏覽器測試過
-- **老闆後台 PWA 目前是暫時透過 GitHub Pages 在跑**：`https://abspbt.github.io/yggbagle/`
+- **老闆後台 PWA 目前是暫時透過 GitHub Pages 在跑**：`https://abspbt.github.io/yjg-order/`
   （這不是原本規劃的路線，是開發過程中為了方便手機測試先臨時掛上去的，Phase 7 要決定
   要不要把它正式搬到 Cloudflare Pages，或是暫時先繼續用 GitHub Pages 也可以，這個我還沒決定，
   麻煩先跟我確認再動手）
@@ -118,7 +118,7 @@ Phase 0～6 都已經完成並併回 main，Google Sheets 表結構、Worker API
 業主買好網域後，主網址連到放在 GitHub Pages 的一頁式首頁（店家資料+公告+連結）；顧客團購單
 （現有 site/ 資料夾）部署到同一個 Cloudflare Pages 專案，用資料夾對應子路徑的方式管理，
 為未來的團購單B、C…預留擴充空間。老闆後台 PWA 要不要從目前暫時的 GitHub Pages
-（https://abspbt.github.io/yggbagle/）搬到 Cloudflare Pages，這次還沒定案，要先跟我確認。
+（https://abspbt.github.io/yjg-order/）搬到 Cloudflare Pages，這次還沒定案，要先跟我確認。
 
 詳細背景、目前狀態、Repo 結構都寫在 HANDOFF_PHASE7_DEPLOY.md，請先讀這份文件再開始。
 
