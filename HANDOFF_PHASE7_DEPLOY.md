@@ -25,8 +25,17 @@ Cloudflare Dashboard 網頁介面操作，不要預設要我開終端機打指�
 
 - Phase 0～6 全部完成，Google Sheets 表結構、Worker API、顧客網站前端、老闆後台 PWA
   都已經串好真實資料，功能可以正常運作（見下方「目前進度」完整清單）
-- **首頁已經做好，目前在測試中**——放在哪個 repo／資料夾待確認，Phase 7 開始動手前
-  要先跟業主核對一次（目前這份 `abspbt/yjg-order` repo 裡還沒看到首頁的檔案）
+- **首頁已經做好，目前在測試中**——放在**另一個獨立的 repo**：`abspbt/yjg-bakery`（`index.html`
+  在 repo 根目錄，另有 `about/`、`bagel/`、`bagel-order/`、`cake-order/`、`warm-salad/`、`faq/`
+  幾個子資料夾，各自獨立網址、九宮格導覽首頁、SPA 式換頁，細節規範見該 repo 自己的
+  `CLAUDE.md`）。目前也是暫時掛在 GitHub Pages：`https://abspbt.github.io/yjg-bakery/`，
+  跟老闆後台 PWA 同樣狀況，這次要一起搬到 Cloudflare Pages
+  - ⚠️ **重要，Phase 7 上線前要處理**：首頁裡的「貝果預訂」（`bagel-order/`）、「蛋糕訂製」
+    （`cake-order/`）目前寫的都還是**打電話／LINE 手動訂購**的說明（1. 選口味 2. 打電話
+    或 LINE 告知 3. 約取貨時間 4. 到店取貨付款），完全沒有連到已經做好的線上預購系統
+    （`yjg-order` repo 的 `site/`）。也就是說首頁跟線上預購系統目前是**兩個互不相連的東西**，
+    正式上線前要把這兩頁改成連到顧客訂購網站的網址，不然客人從首頁點進來還是只看到「請打
+    電話」，看不到線上下單的入口
 - **顧客網站（`site/`）目前完全沒有部署到任何網址**，只在本機瀏覽器測試過
 - **老闆後台 PWA 目前是暫時透過 GitHub Pages 在跑**：`https://abspbt.github.io/yjg-order/`
   （這是開發過程中為了方便手機測試先臨時掛上去的，**Phase 7 已經定案要搬到 Cloudflare
@@ -44,11 +53,14 @@ Cloudflare Dashboard 網頁介面操作，不要預設要我開終端機打指�
 三個網站各自獨立，各自在 Cloudflare Pages 建一個專案，各自綁一個**自訂子網域**
 （不用 GitHub Pages，也不直接把 Cloudflare 給的 `*.pages.dev` 網址交給老闆或客人用）：
 
-| 網站 | 內容 | Cloudflare Pages 的 Root directory | 網域（示意，實際名稱到時再定） |
+| 網站 | GitHub repo | Cloudflare Pages 的 Root directory | 網域（示意，實際名稱到時再定） |
 |---|---|---|---|
-| 首頁 | 店家資料、公告、連到訂購網站的連結 | 待確認（看首頁放在哪個資料夾） | `xxx.com`（買下來的網域主網址） |
-| 顧客訂購網站 | 現有 `site/` 資料夾 | `site/` | 例如 `order.xxx.com` |
-| 老闆後台 PWA | repo 根目錄的 `index.html`／`js/`／`css/` 等 | `/`（repo 根目錄） | 例如 `boss.xxx.com`（**刻意不公開**，不放在首頁或任何頁面的連結裡，只給老闆自己收藏／加到手機主畫面用） |
+| 首頁 | `abspbt/yjg-bakery` | `/`（repo 根目錄） | `xxx.com`（買下來的網域主網址） |
+| 顧客訂購網站 | `abspbt/yjg-order` | `site/` | 例如 `order.xxx.com` |
+| 老闆後台 PWA | `abspbt/yjg-order` | `/`（repo 根目錄） | 例如 `boss.xxx.com`（**刻意不公開**，不放在首頁或任何頁面的連結裡，只給老闆自己收藏／加到手機主畫面用） |
+
+**注意：首頁跟另外兩個網站不是同一個 repo**，`abspbt/yjg-bakery` 是獨立的 repo，建 Cloudflare
+Pages 專案時要連接對的 repo，不要都指向 `abspbt/yjg-order`。
 
 **為什麼這樣做**（討論時的理由，之後接手不用重新討論）：
 
@@ -80,30 +92,38 @@ Cloudflare Dashboard 網頁介面操作，不要預設要我開終端機打指�
 
 ---
 
-## Repo 裡前端的位置（給接手的人參考）
+## 三個網站的位置（給接手的人參考）
 
-- **首頁**：位置待確認（目前 `abspbt/yjg-order` 這份 repo 裡還沒有，可能在別的地方做的，
-  Phase 7 開始前要先跟業主確認清楚，並決定要不要把它搬進這個 repo）
-- **顧客預購網站**：`site/index.html`、`site/js/app.js`、`site/css/`（如果有的話，實際結構請
-  直接看 repo）——純前端單頁式網站，串接 Worker 的公開 API（`GET /settings`、`GET /campaigns`、
-  `GET /products`、`POST /orders`），不需要登入
-- **老闆後台 PWA**：repo 根目錄的 `index.html`、`js/app.js`、`js/api.js`、`css/style.css`、
-  `manifest.json`、`sw.js`、`icons/`——PWA（可加到手機主畫面），PIN 登入後才能用，串接 Worker
-  需要登入的 API
-- 顧客網站跟老闆 PWA 是**完全獨立**的兩個網站，各自有自己的 `index.html`，各自建一個
-  Cloudflare Pages 專案（用同一個 repo、指定不同的 Root directory）來部署
-- `worker/` 資料夾是 Cloudflare Worker（已經上線，不用重新部署，除非之後 Worker 程式碼有改動），
-  **不屬於任何一個 Cloudflare Pages 專案的 Root directory**，不會被部署出去
+- **首頁**：獨立 repo `abspbt/yjg-bakery`，`index.html` 在 repo 根目錄，另有 `about/`、
+  `bagel/`、`bagel-order/`、`cake-order/`、`warm-salad/`、`faq/` 幾個子資料夾頁面。九宮格
+  導覽首頁、視覺像單頁但其實是多頁架構（`assets/js/nav.js` 做 SPA 式換頁），站內連結一律
+  用相對路徑，該 repo 自己的 `CLAUDE.md` 有完整規範（配色、圖示、換頁注意事項等），改動這個
+  repo 時要先讀過
+  - ⚠️ `bagel-order/`、`cake-order/` 這兩頁目前內容是電話／LINE 手動訂購說明，**還沒連到**
+    `abspbt/yjg-order` 的線上預購網站，見上方「目前狀態」的提醒，上線前要處理
+- **顧客預購網站**：repo `abspbt/yjg-order` 的 `site/index.html`、`site/js/app.js`、
+  `site/css/`（如果有的話，實際結構請直接看 repo）——純前端單頁式網站，串接 Worker 的公開
+  API（`GET /settings`、`GET /campaigns`、`GET /products`、`POST /orders`），不需要登入
+- **老闆後台 PWA**：repo `abspbt/yjg-order` 根目錄的 `index.html`、`js/app.js`、`js/api.js`、
+  `css/style.css`、`manifest.json`、`sw.js`、`icons/`——PWA（可加到手機主畫面），PIN 登入後
+  才能用，串接 Worker 需要登入的 API
+- 顧客網站跟老闆 PWA 同一個 repo（`abspbt/yjg-order`）、各自有自己的 `index.html`，在
+  Cloudflare Pages 建兩個專案、指定不同的 Root directory 來部署；首頁是完全不同的 repo
+  （`abspbt/yjg-bakery`），要另外建第三個 Cloudflare Pages 專案連接它
+- `worker/` 資料夾（在 `abspbt/yjg-order` 裡）是 Cloudflare Worker（已經上線，不用重新部署，
+  除非之後 Worker 程式碼有改動），**不屬於任何一個 Cloudflare Pages 專案的 Root directory**，
+  不會被部署出去
 
 ---
 
 ## Phase 7 要做的事（照 `CLAUDE.md` 大綱，已依上面「部署架構」調整）
 
 - [ ] 跟業主確認網域購買狀況
-- [ ] 確認首頁目前放在哪個 repo／資料夾，決定要不要搬進 `abspbt/yjg-order` 這個 repo，
-      或維持獨立管理
-- [ ] 在 Cloudflare Pages 建立 3 個專案，各自指定 Root directory（首頁／`site/`／repo
-      根目錄），各自綁定自訂子網域（見上方「部署架構」表格）
+- [ ] 在 Cloudflare Pages 建立 3 個專案：首頁連接 `abspbt/yjg-bakery`（root `/`），顧客訂購
+      網站連接 `abspbt/yjg-order`（root `site/`），老闆後台 PWA 連接 `abspbt/yjg-order`
+      （root `/`），各自綁定自訂子網域（見上方「部署架構」表格）
+- [ ] 把首頁 `bagel-order/`、`cake-order/` 兩頁的電話／LINE 訂購說明，改成連到顧客訂購網站
+      的正式網址（例如 `order.xxx.com`），讓客人從首頁能直接點進線上預購系統
 - [ ] 確認老闆後台的子網域**沒有**被不小心放進首頁或任何公開頁面的連結裡
 - [ ] 確認 Worker 路由/CORS 設定跟三個新網域都相容（目前是開放所有來源，理論上不用改，
       但要實際測試過）
@@ -135,11 +155,12 @@ Phase 0～6 都已經完成並併回 main，Google Sheets 表結構、Worker API
 老闆後台 PWA 都已經串好真實資料，功能可以正常運作。
 
 現在要做 Phase 7：部署 + 網域設定。部署架構已經定案（詳見文件裡「部署架構」段落）：
-首頁、顧客訂購網站（現有 site/ 資料夾）、老闆後台 PWA 三個各自獨立部署到 Cloudflare
-Pages，各自綁一個自訂子網域（不用 GitHub Pages，也不直接用 Cloudflare 給的 *.pages.dev
-原始網址）。首頁掛在買下來的網域主網址，顧客訂購網站掛在一個好記的子網域，老闆後台掛在
-一個刻意不公開、不放連結的子網域。首頁目前已經做好在測試中，但放在哪個 repo／資料夾
-還要先跟我確認。
+首頁（獨立 repo abspbt/yjg-bakery）、顧客訂購網站（abspbt/yjg-order 的 site/ 資料夾）、
+老闆後台 PWA（abspbt/yjg-order 根目錄）三個各自獨立部署到 Cloudflare Pages，各自綁一個
+自訂子網域（不用 GitHub Pages，也不直接用 Cloudflare 給的 *.pages.dev 原始網址）。首頁掛
+在買下來的網域主網址，顧客訂購網站掛在一個好記的子網域，老闆後台掛在一個刻意不公開、不放
+連結的子網域。⚠️ 首頁裡的「貝果預訂」「蛋糕訂製」兩頁目前還是電話/LINE 訂購說明，上線前
+要記得改成連到顧客訂購網站的正式網址。
 
 詳細背景、目前狀態、Repo 結構都寫在 HANDOFF_PHASE7_DEPLOY.md，請先讀這份文件再開始。
 
