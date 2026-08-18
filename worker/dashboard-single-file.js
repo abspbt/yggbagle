@@ -374,6 +374,17 @@ function toBool(value) {
   return value === true || value === "true" || value === "TRUE" || value === 1 || value === "1";
 }
 
+// 防止顧客輸入被 Google Sheets 當成公式執行（Formula Injection）。
+// appendRows/updateRow 都用 valueInputOption=USER_ENTERED 寫入，這個模式會模擬使用者手動
+// 打字的行為：儲存格內容開頭是 =、+、-、@ 會被解析成公式，不是純文字。顧客下單時填的姓名、
+// 備註、宅配地址不受信任，比照 customer_phone 原本防止開頭 0 被吃掉的做法（前導單引號強制
+// 存成純文字），只在開頭是這幾個公式觸發字元時才加上 `'`，避免老闆之後打開 Google Sheets
+// 時公式被自動執行（可能外洩其他欄位資料，或做釣魚連結）。
+function sanitizeForSheets(value) {
+  const str = String(value == null ? "" : value);
+  return /^[=+\-@]/.test(str) ? `'${str}` : str;
+}
+
 async function getAuthedContext(env) {
   const serviceAccount = JSON.parse(env.GOOGLE_SERVICE_ACCOUNT_KEY);
   const accessToken = await getAccessToken(serviceAccount);
@@ -643,16 +654,16 @@ async function handleCreateOrder(request, env) {
       orderId,
       campaign_id,
       isoLocal,
-      customer_name,
+      sanitizeForSheets(customer_name),
       `'${customer_phone}`,
       pickupSlotIdValue,
       total,
       "pending",
       "new",
-      note || "",
+      sanitizeForSheets(note || ""),
       deliveryMethod,
       shippingFee,
-      deliveryAddressValue,
+      sanitizeForSheets(deliveryAddressValue),
     ],
   ]);
 
