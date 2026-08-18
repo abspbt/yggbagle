@@ -953,6 +953,7 @@
     state.lastOrder = {
       order_id: order.order_id,
       fulfillment: fulfillment,
+      note: order.note,
       items: displayItems,
       fee: fee,
       total: grandTotal,
@@ -1008,6 +1009,7 @@
     });
     if (order.fee > 0) lines.push("低溫宅配運費　" + money(order.fee));
     lines.push("總計　" + money(order.total));
+    if (order.note) lines.push("", "備註：" + order.note);
     return lines.join("\n");
   }
 
