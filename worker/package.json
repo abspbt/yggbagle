@@ -1,5 +1,5 @@
 {
-  "name": "yggbagle-worker",
+  "name": "yjg-order-worker",
   "private": true,
   "version": "0.1.0",
   "type": "module",
