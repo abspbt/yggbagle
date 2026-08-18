@@ -624,6 +624,7 @@ npm run deploy
 - `expires_at` 是到期時間（unix 秒數），前端可以用這個提早提醒老闆快過期了，或直接等收到 401 再導回登入畫面都可以
 - PIN 錯誤回 HTTP 401：`{ "ok": false, "error": "PIN 錯誤" }`
 - Worker 還沒設定 `ADMIN_PIN`／`TOKEN_SECRET` 這兩個環境變數的話會回 HTTP 500，提醒要先去 Cloudflare Dashboard 設定
+- **防暴力破解（安全性修正）**：連續猜錯 5 次，會鎖定 15 分鐘不能再嘗試（不管這期間 PIN 對不對都直接回 HTTP 429 `{ "ok": false, "error": "登入嘗試次數過多，請於 X 分鐘後再試" }`），鎖定時間到了才能再試。原因：`/auth/login` 是公開端點，PIN 只有 6 位數字（100 萬種組合），如果沒有這道防線，攻擊者可以寫程式無限次嘗試，猜中就能拿到完整的老闆權限（讀顧客個資、改商品/訂單/設定）。因為專案不用 D1/KV，失敗次數跟鎖定到期時間是借用既有的 `Settings` 分頁存（`login_fail_count`、`login_locked_until` 這兩個 key），跟訂單編號流水號一樣是「讀了再寫」的簡單做法，不是原子鎖，極端情況下可能少算一兩次失敗次數，但不影響防護效果（重點是把暴力破解時間拉長到不可行）。這兩個 key 只有內部使用，`GET /settings` 不會回傳給顧客端。**因為只有老闆一個人會登入，鎖定期間老闆自己也會被擋**，如果不小心連續打錯密碼，等 15 分鐘或請老闆自己去 Google Sheets 的 `Settings` 分頁把這兩個 key 的值清空/歸零就能立刻解鎖
 
 **呼叫需要登入的 API**，把拿到的 token 放進 `Authorization` header：
 
