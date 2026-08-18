@@ -391,6 +391,34 @@ async function getAuthedContext(env) {
   return { accessToken, spreadsheetId: env.SPREADSHEET_ID };
 }
 
+// PIN 登入防暴力破解：連續失敗 LOGIN_MAX_ATTEMPTS 次就鎖定 LOGIN_LOCKOUT_SECONDS 秒，
+// 期間內不管 PIN 對不對都直接擋下。專案不用 D1/KV（技術棧原則），失敗次數跟鎖定到期時間
+// 直接借用既有的 Settings 分頁存兩個 key（login_fail_count、login_locked_until），跟專案
+// 其他地方「讀了再寫」的簡單檢查（訂單編號流水號、總量上限）同一套取捨：極端情況下幾乎
+// 同時的兩個請求可能互相蓋掉對方的計數、少算一兩次，但這裡只是要把暴力破解 6 位數 PIN
+// （100 萬種組合）拉長到不可行的時間，少算一兩次不影響防護效果。因為只有老闆一個人會
+// 登入，鎖定期間連老闆自己也會被擋，這是可以接受的代價（比被暴力破解好）。
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_SECONDS = 15 * 60;
+const LOGIN_THROTTLE_KEYS = new Set(["login_fail_count", "login_locked_until"]);
+
+// Settings 分頁的 upsert（key 存在就覆寫、不存在就新增一列），給登入節流跟之後任何
+// 需要單一存一組 key-value 的地方共用。
+async function upsertSetting(accessToken, spreadsheetId, key, value) {
+  const found = await findRowByKey(accessToken, spreadsheetId, "Settings", "setting_key", key);
+  if (found) {
+    const { header, row, rowNumber } = found;
+    const keyIndex = header.indexOf("setting_key");
+    const valueIndex = header.indexOf("setting_value");
+    const newRow = header.map((_, i) => (row[i] !== undefined ? row[i] : ""));
+    newRow[keyIndex] = key;
+    newRow[valueIndex] = value;
+    await updateRow(accessToken, spreadsheetId, "Settings", rowNumber, newRow);
+  } else {
+    await appendRows(accessToken, spreadsheetId, "Settings", [[key, value]]);
+  }
+}
+
 // POST /auth/login：老闆輸入 PIN 換一支短期 Token（12 小時），之後老闆端的寫入 API
 // 都要在 Authorization: Bearer <token> header 帶這支 token 才能呼叫。
 // PIN（`ADMIN_PIN`）跟簽章用的密鑰（`TOKEN_SECRET`）都是 Cloudflare Dashboard 的「秘密」
@@ -415,8 +443,42 @@ async function handleLogin(request, env) {
     );
   }
 
+  const { accessToken, spreadsheetId } = await getAuthedContext(env);
+  const settingsRows = await getSheetRows(accessToken, spreadsheetId, "Settings");
+  const settingsMap = {};
+  for (const row of settingsRows) {
+    if (row.setting_key) settingsMap[row.setting_key] = row.setting_value;
+  }
+  const failCount = toNumber(settingsMap.login_fail_count);
+  const lockedUntil = toNumber(settingsMap.login_locked_until);
+  const now = Math.floor(Date.now() / 1000);
+
+  if (lockedUntil > now) {
+    const remainingMinutes = Math.ceil((lockedUntil - now) / 60);
+    return json({ ok: false, error: `登入嘗試次數過多，請於 ${remainingMinutes} 分鐘後再試` }, { status: 429 });
+  }
+
   if (pin !== env.ADMIN_PIN) {
+    const nextFailCount = failCount + 1;
+    if (nextFailCount >= LOGIN_MAX_ATTEMPTS) {
+      await Promise.all([
+        upsertSetting(accessToken, spreadsheetId, "login_fail_count", "0"),
+        upsertSetting(accessToken, spreadsheetId, "login_locked_until", String(now + LOGIN_LOCKOUT_SECONDS)),
+      ]);
+      return json(
+        { ok: false, error: `登入嘗試次數過多，請於 ${Math.ceil(LOGIN_LOCKOUT_SECONDS / 60)} 分鐘後再試` },
+        { status: 429 }
+      );
+    }
+    await upsertSetting(accessToken, spreadsheetId, "login_fail_count", String(nextFailCount));
     return json({ ok: false, error: "PIN 錯誤" }, { status: 401 });
+  }
+
+  if (failCount > 0 || lockedUntil > 0) {
+    await Promise.all([
+      upsertSetting(accessToken, spreadsheetId, "login_fail_count", "0"),
+      upsertSetting(accessToken, spreadsheetId, "login_locked_until", "0"),
+    ]);
   }
 
   const { token, expiresAt } = await signToken(env.TOKEN_SECRET);
@@ -1318,7 +1380,11 @@ async function handleGetSettings(env) {
 
   const settings = {};
   for (const row of rows) {
-    if (row.setting_key) settings[row.setting_key] = row.setting_value;
+    // login_fail_count/login_locked_until 是 PIN 登入防暴力破解用的內部節流計數
+    // （見 handleLogin），不是給顧客看的店家資訊，這支公開 API 不回傳。
+    if (row.setting_key && !LOGIN_THROTTLE_KEYS.has(row.setting_key)) {
+      settings[row.setting_key] = row.setting_value;
+    }
   }
 
   // 「顧客現在到底能不能下單」＝ 老闆的手動開關 AND 至少有一個還在預購中的檔期。
