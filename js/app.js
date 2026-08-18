@@ -69,13 +69,29 @@ function normalizeDateString(value) {
   return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
 }
 
-// 檔期是不是「還在預購中」：status 要是 active，而且預購結束日還沒過
-// （end_date 當天仍算開放，隔天才關；沒填 end_date 就只看 status）。
+// 檔期是不是「還在預購中」：status 要是 active，而且今天落在預購起訖日之間
+// （start_date 當天就算開放、end_date 當天仍算開放，隔天才關；沒填的那一邊就不設限）。
 function isCampaignOngoing(c, today) {
   if (!c || c.status !== 'active') return false;
+  const t = today || taipeiToday();
+  const startDate = normalizeDateString(c.start_date);
+  if (startDate && startDate > t) return false;
   const endDate = normalizeDateString(c.end_date);
-  if (!endDate) return true;
-  return endDate >= (today || taipeiToday());
+  if (endDate && endDate < t) return false;
+  return true;
+}
+
+// 檔期在老闆後台要顯示的狀態徽章：ended（手動結束）優先，其次看起訖日算出
+// upcoming（起日還沒到）／ended（迄日已過）／active（進行中）。跟 isCampaignOngoing()
+// 是同一套起訖日規則，只是這裡多拆出「即將開始」這個純顯示用的中間狀態。
+function campaignDisplayStatus(c, today) {
+  if (c.status === 'ended') return 'ended';
+  const t = today || taipeiToday();
+  const startDate = normalizeDateString(c.start_date);
+  if (startDate && startDate > t) return 'upcoming';
+  const endDate = normalizeDateString(c.end_date);
+  if (endDate && endDate < t) return 'ended';
+  return 'active';
 }
 
 // 顧客端現在到底能不能下單：老闆的手動開關 AND 至少有一個還在預購中的檔期。
@@ -1132,14 +1148,14 @@ async function renderCampaignsList() {
     const ordered = orderedQty(c.campaign_id);
     const cap = c.total_quantity_cap || 0;
     const pct = cap ? Math.min(100, Math.round((ordered / cap) * 100)) : 0;
-    // 檔期狀態還是「進行中」，但預購結束日已經過了：顧客端其實已經停止收單，
-    // 這裡照實顯示「預購已結束」，免得老闆看到「進行中」以為還在收單。
-    const preorderEnded = c.status === 'active' && !isCampaignOngoing(c, today);
+    // 徽章完全照起訖日自動算（即將開始／進行中／已結束），不是照 c.status 原始值，
+    // 這樣老闆設好起訖日之後，狀態會自己跑，不用再手動切換。
+    const displayStatus = campaignDisplayStatus(c, today);
     return `
       <button class="card card-tap" data-nav="more/campaigns/${c.campaign_id}">
         <div class="order-card-top">
           <div class="order-customer">${escapeHtml(c.name)}</div>
-          <span class="badge ${preorderEnded ? 'badge-ended' : (CAMPAIGN_STATUS_BADGE[c.status] || '')}">${preorderEnded ? '預購已結束' : (CAMPAIGN_STATUS_LABEL[c.status] || c.status)}</span>
+          <span class="badge ${CAMPAIGN_STATUS_BADGE[displayStatus] || ''}">${CAMPAIGN_STATUS_LABEL[displayStatus] || displayStatus}</span>
         </div>
         <div class="order-line"><span>預購期間</span><span>${escapeHtml(c.start_date || '')} ~ ${escapeHtml(c.end_date || '')}</span></div>
         <div class="order-line"><span>取貨日</span><span>${(c.pickup_slots || []).map(s => s.date).join('、') || '—'}</span></div>
@@ -1187,7 +1203,7 @@ async function renderCampaignEdit(id) {
       if (!c) { navigate('more/campaigns'); return; }
       hasOrders = (ordersData.orders || []).some(o => o.campaign_id === id);
     } else {
-      c = { campaign_id: null, name: '', start_date: '', end_date: '', pickup_slots: [], total_quantity_cap: '', status: 'upcoming' };
+      c = { campaign_id: null, name: '', start_date: '', end_date: '', pickup_slots: [], total_quantity_cap: '', status: 'active' };
       hasOrders = false;
       const [campaignsData, productsData] = await Promise.all([
         Api.get('/admin/campaigns'),
@@ -1249,6 +1265,7 @@ async function renderCampaignEdit(id) {
           <input class="field-input" type="date" id="f-start" value="${c.start_date || ''}" />
           <input class="field-input" type="date" id="f-end" value="${c.end_date || ''}" />
         </div>
+        <div class="field-hint">顧客端會自動照這組日期開放／關閉，起日當天開放、迄日當天仍開放（隔天才關），不用再手動切換狀態。</div>
       </div>
       <div class="field">
         <label class="field-label">取貨日期／時段</label>
@@ -1262,10 +1279,10 @@ async function renderCampaignEdit(id) {
       <div class="field">
         <label class="field-label">檔期狀態</label>
         <select class="field-select" id="f-status">
-          <option value="upcoming" ${c.status === 'upcoming' ? 'selected' : ''}>即將開始</option>
-          <option value="active" ${c.status === 'active' ? 'selected' : ''}>進行中</option>
+          <option value="active" ${c.status !== 'ended' ? 'selected' : ''}>進行中</option>
           <option value="ended" ${c.status === 'ended' ? 'selected' : ''}>已結束</option>
         </select>
+        <div class="field-hint">「進行中」的檔期會不會被顧客看到，交給上面的預購起訖日自動判斷；這裡的「已結束」是手動強制關閉，不管日期都不會再開放。</div>
       </div>
       ${isNew && prevCampaign && prevCampaignProductCount > 0 ? `
       <div class="field">

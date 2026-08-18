@@ -130,14 +130,17 @@ function normalizeDateString(value) {
   return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
 }
 
-// 檔期是不是「還在預購中」：status 要是 active，而且預購結束日還沒過。
-// end_date 當天仍然算開放（隔天才關），沒填 end_date 就只看 status。
-// 這是「預購有沒有開放」的單一判斷依據，公開 API 跟老闆後台都走這個函式。
+// 檔期是不是「還在預購中」：status 要是 active，而且今天落在預購起訖日之間。
+// start_date 當天就算開放（前一天還不開放）、end_date 當天仍然算開放（隔天才關），
+// 沒填的那一邊就不設限。這是「預購有沒有開放」的單一判斷依據，公開 API 跟老闆後台都走這個函式，
+// 完全自動：老闆只要把起訖日設好，不用再手動切換檔期狀態。
 function isCampaignOngoing(campaign, today) {
   if (!campaign || campaign.status !== "active") return false;
+  const startDate = normalizeDateString(campaign.start_date);
+  if (startDate && startDate > today) return false;
   const endDate = normalizeDateString(campaign.end_date);
-  if (!endDate) return true;
-  return endDate >= today;
+  if (endDate && endDate < today) return false;
+  return true;
 }
 
 // 訂單編號格式 ORD-YYYYMMDD-XXXX，同一天內流水號遞增。
@@ -215,9 +218,16 @@ async function handleCreateOrder(request, env) {
   if (!campaign || campaign.status !== "active") {
     return json({ ok: false, error: "此檔期目前未開放預購" }, { status: 400 });
   }
-  // 預購結束日過了就不再收單，不用等老闆手動把檔期改成 ended。
-  if (!isCampaignOngoing(campaign, nowInTaipei().dateISO)) {
-    return json({ ok: false, error: "本檔期預購已結束，請等待下一檔期" }, { status: 400 });
+  // 起訖日過了就不再收單，不用等老闆手動切換檔期狀態。理論上顧客不會走到「還沒開始」
+  // 這個分支（GET /campaigns 已經先擋掉了），這裡分開訊息純粹是保險，避免誤導成「已結束」。
+  const today = nowInTaipei().dateISO;
+  if (!isCampaignOngoing(campaign, today)) {
+    const startDate = normalizeDateString(campaign.start_date);
+    const notStartedYet = startDate && startDate > today;
+    return json(
+      { ok: false, error: notStartedYet ? "本檔期預購尚未開始，請稍後再試" : "本檔期預購已結束，請等待下一檔期" },
+      { status: 400 }
+    );
   }
 
   if (deliveryMethod === "pickup") {
@@ -558,7 +568,10 @@ function maxSlotSeq(existingSlots) {
   return maxSeq;
 }
 
-const CAMPAIGN_STATUS_VALUES = ["upcoming", "active", "ended"];
+// 拿掉了原本的 "upcoming"（即將開始）：老闆改用官方 LINE 通知顧客，不需要這個手動中間狀態，
+// 檔期一建立就是 active，能不能被顧客看到完全交給 isCampaignOngoing() 的起訖日判斷。
+// "ended" 保留給「結束檔期」按鈕用，屬於老闆手動強制關閉，跟起訖日無關。
+const CAMPAIGN_STATUS_VALUES = ["active", "ended"];
 
 // 把某個檔期底下的所有商品，整批複製成新檔期底下的新商品（新的 product_id，其他欄位照抄）。
 // 給「新增檔期」時「沿用上一檔商品清單」用，回傳這次複製了幾筆。
@@ -612,7 +625,7 @@ async function handleCreateCampaign(request, env) {
     return json({ ok: false, error: "缺少必要欄位（name）" }, { status: 400 });
   }
 
-  const campaignStatus = status !== undefined ? status : "upcoming";
+  const campaignStatus = status !== undefined ? status : "active";
   if (!CAMPAIGN_STATUS_VALUES.includes(campaignStatus)) {
     return json({ ok: false, error: `status 必須是：${CAMPAIGN_STATUS_VALUES.join(" / ")}` }, { status: 400 });
   }
@@ -794,8 +807,8 @@ async function handleDeleteCampaign(env, campaignId) {
   return json({ ok: true });
 }
 
-// GET /admin/campaigns（Phase 6 新增）：給老闆檔期設定頁用，回傳「所有」檔期（不分 upcoming/active/ended），
-// 跟公開的 GET /campaigns（只回傳 active）不一樣。
+// GET /admin/campaigns（Phase 6 新增）：給老闆檔期設定頁用，回傳「所有」檔期（不分 active/ended），
+// 跟公開的 GET /campaigns（只回傳目前還在預購中的檔期）不一樣。
 async function handleAdminCampaigns(env) {
   const { accessToken, spreadsheetId } = await getAuthedContext(env);
   const [campaigns, slots] = await Promise.all([
