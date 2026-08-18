@@ -45,6 +45,10 @@
 - ✅ 檔期預購起訖日改成完全自動判斷、拿掉手動的「即將開始」狀態（見下方「近期優化備註」，
   PR #53）：老闆確認改用官方 LINE 通知顧客新檔期，設定好起訖日就會自動開放/關閉，不用
   再手動切換檔期狀態；顧客網站「目前沒有開放中的預購檔期」的文字也改成引導加官方 LINE
+- ✅ Worker API 安全性修正（見下方「近期優化備註」，PR #57）：老闆主動要求跑一次
+  `/security-review`，抓出並修好兩個漏洞——`POST /orders` 的 Formula Injection（顧客姓名/
+  備註/宅配地址寫入 Google Sheets 前先跳脫公式觸發字元）、`POST /auth/login` 的 PIN 防暴力
+  破解節流（連續猜錯 5 次鎖定 15 分鐘）
 - ⏭️ 下一步：Phase 7（部署 + 網域設定）——顧客網站 `site/` 目前完全還沒部署到任何正式網址
   （只在本機瀏覽器測試過完整流程）；老闆後台 PWA 目前暫時掛在 GitHub Pages
   （`https://abspbt.github.io/yjg-order/`），要不要正式搬到 Cloudflare Pages 還沒決定；
@@ -284,6 +288,23 @@
     資訊」，引導顧客改用 LINE 追蹤新檔期公告
   - `worker/src/index.js`、`worker/dashboard-single-file.js`、`js/app.js` 都已同步更新，
     已透過 Cloudflare Dashboard 網頁編輯器重新部署
+- Worker API 安全性修正（老闆主動要求跑一次 `/security-review`，PR #57）：
+  - **Formula Injection**：`POST /orders` 是公開不需登入的端點，顧客下單填的
+    `customer_name`、`note`、`delivery_address` 寫入 Google Sheets 時用的是
+    `USER_ENTERED` 模式（模擬使用者手動打字，開頭是 `=`/`+`/`-`/`@` 會被解析成公式），
+    原本沒有做任何跳脫——顧客故意填惡意公式（例如 `IMPORTXML`），老闆之後打開
+    Google Sheets 核對訂單就會被自動執行，可能外洩其他欄位的顧客個資，或做釣魚連結。
+    修法：新增 `sanitizeForSheets()`，比照 `customer_phone` 原本防止開頭 0 被吃掉的
+    做法，開頭是這幾個公式觸發字元時加上前導單引號強制存成純文字；回傳給顧客自己看的
+    訂單確認資料不受影響
+  - **PIN 登入防暴力破解**：`POST /auth/login` 同樣公開不需登入，PIN 只有 6 位數字
+    （100 萬種組合），原本沒有任何嘗試次數限制。修法：連續猜錯 5 次鎖定 15 分鐘，期間
+    不管 PIN 對不對都直接擋下（HTTP 429）；專案不用 D1/KV，失敗次數跟鎖定到期時間借用
+    既有 `Settings` 分頁存（`login_fail_count`、`login_locked_until`），`GET /settings`
+    已排除這兩個內部 key、不會回傳給顧客端。因為只有老闆一個人登入，鎖定期間老闆自己
+    也會被擋，是刻意接受的代價
+  - `worker/src/index.js`、`worker/dashboard-single-file.js`、`worker/README.md` 都已
+    同步更新，已透過 Cloudflare Dashboard 網頁編輯器重新部署
 
 Phase 0 各頁 Wireframe 定案內容已整理成交接摘要，見對話紀錄
 （今日 Dashboard、商品管理、訂單列表+付款確認、公告設定、
