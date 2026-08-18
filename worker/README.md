@@ -202,7 +202,7 @@ npm run deploy
 
 回傳目前**還在預購中**的檔期，每個檔期底下帶著自己的取貨時段（`PickupSlots`）。
 
-「還在預購中」＝ `status` 是 `active`，**而且** `end_date`（預購結束日）還沒過（台北時區，`end_date` 當天仍然算開放，隔天才會自動消失）。`end_date` 空白代表不看日期，只看 `status`。這個判斷邏輯（`isCampaignOngoing()`）同時用在 `GET /products`、`POST /orders` 跟 `GET /settings` 的 `preorder_open_effective`。
+「還在預購中」＝ `status` 是 `active`，**而且**今天落在 `start_date`（預購起日）～`end_date`（預購結束日）之間（台北時區；`start_date` 當天就算開放，`end_date` 當天仍然算開放，隔天才會自動消失）。兩個日期只要空白就不看那一邊。老闆只要把起訖日設好，檔期會自動開放/關閉，不需要手動切換狀態；`status` 目前只剩 `active`/`ended` 兩種，`ended` 是老闆用「結束檔期」手動強制關閉，不管日期都不會再開放。這個判斷邏輯（`isCampaignOngoing()`）同時用在 `GET /products`、`POST /orders` 跟 `GET /settings` 的 `preorder_open_effective`。
 
 ```json
 {
@@ -225,7 +225,7 @@ npm run deploy
 
 ### `GET /products`
 
-回傳目前**還在預購中**的檔期（判斷方式見 `GET /campaigns`：`status` 是 `active` 且 `end_date` 還沒過）、且上架中（`active` 勾選）的商品。`ordered_quantity` 是即時從 `Order_Items` 加總算出來的已訂購量（只算該商品所屬檔期、且訂單狀態不是 `cancelled` 的訂單），**不是**存在 Sheets 裡的欄位，延續 Phase 2 「不存彙總欄位」的原則。
+回傳目前**還在預購中**的檔期（判斷方式見 `GET /campaigns`：`status` 是 `active` 且今天落在起訖日之間）、且上架中（`active` 勾選）的商品。`ordered_quantity` 是即時從 `Order_Items` 加總算出來的已訂購量（只算該商品所屬檔期、且訂單狀態不是 `cancelled` 的訂單），**不是**存在 Sheets 裡的欄位，延續 Phase 2 「不存彙總欄位」的原則。
 
 `variant_group`／`variant_label` 是顧客介面改版新增的大小規格欄位（見下方「商品大小規格（`Products` 新增欄位）」），沒有設定時回傳空字串 `""`。
 
@@ -542,7 +542,7 @@ npm run deploy
 
 ### `GET /admin/campaigns`
 
-回傳**所有**檔期（不分 `upcoming`/`active`/`ended`），格式跟 `GET /campaigns` 一樣。
+回傳**所有**檔期（不分 `active`/`ended`），格式跟 `GET /campaigns` 一樣。
 
 ### `POST /campaigns`
 
@@ -554,7 +554,7 @@ npm run deploy
   "start_date": "2026-08-17",
   "end_date": "2026-08-21",
   "total_quantity_cap": 120,
-  "status": "upcoming",
+  "status": "active",
   "pickup_slots": [
     { "date": "2026-08-23", "time_range": "14:00-18:00" }
   ],
@@ -562,7 +562,7 @@ npm run deploy
 }
 ```
 
-- `name` 為必填，其他欄位可省略（`status` 預設 `upcoming`，必須是 `upcoming`/`active`/`ended` 其中之一，`pickup_slots` 預設空陣列）
+- `name` 為必填，其他欄位可省略（`status` 預設 `active`，必須是 `active`/`ended` 其中之一，`pickup_slots` 預設空陣列）；檔期建立後能不能被顧客看到，完全由 `start_date`/`end_date` 自動判斷，不需要另外的「即將開始」狀態
 - 檔期編號自動產生，格式 `C001`、`C002`...；取貨時段編號 `S001`、`S002`...（不分檔期共用同一組編號，跟商品編號的做法一樣）
 - `copy_products_from_campaign_id`（選填，老闆後台 PWA「沿用上一檔商品清單」功能用）：帶了的話，會把該檔期底下的所有商品**整批複製**成新檔期底下的新商品（新的 `product_id`，其他欄位——名稱/分類/價格/單筆上限/上下架/大小規格——照抄）。這支店家品項固定，開新檔期不用每次重新輸入 40 個商品，之後在「商品管理」個別調整即可
 - 成功回傳 HTTP 201，內容含 `pickup_slots`（帶著自動產生的 `slot_id`）和 `copied_product_count`（這次複製了幾筆商品，沒有帶 `copy_products_from_campaign_id` 就是 `0`）
