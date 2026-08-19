@@ -237,6 +237,35 @@ function generateOrderId(existingOrders, dateCompact) {
   return `${prefix}${String(maxSeq + 1).padStart(4, "0")}`;
 }
 
+// 檔期「已訂購量」加總（只算未取消訂單），共用給 GET /campaigns、POST /orders 使用，
+// 避免同一段邏輯散落在多個地方、之後改規則卻漏改。
+function campaignOrderedQuantity(campaignId, orders, orderItems) {
+  const countedOrderIds = new Set(
+    orders.filter((o) => o.campaign_id === campaignId && o.order_status !== "cancelled").map((o) => o.order_id)
+  );
+  return orderItems.reduce(
+    (sum, item) => (countedOrderIds.has(item.order_id) ? sum + toNumber(item.quantity) : sum),
+    0
+  );
+}
+
+// 給顧客看的「剩餘量」：剩餘量低於 low_stock_threshold 時，刻意少顯示 low_stock_buffer 份，
+// 讓同時在選購的多個顧客之間留一點緩衝，降低大家都以為自己搶到最後名額、結果同時送出的機率。
+// 兩個欄位任一沒填就不套用緩衝，維持原本「顯示 = 實際剩餘量」的行為。
+// ⚠️ 這裡的緩衝只影響顯示與前端能選的上限，POST /orders 的把關一律用未經緩衝的真實剩餘量，
+// 不能反過來讓顧客用緩衝後的數字騙過最終檢查。
+function campaignDisplayRemaining(campaign, orderedQty) {
+  const cap = toNumber(campaign.total_quantity_cap);
+  if (cap <= 0) return null; // 不限制
+  const actualRemaining = Math.max(0, cap - orderedQty);
+  const threshold = toNumber(campaign.low_stock_threshold);
+  const buffer = toNumber(campaign.low_stock_buffer);
+  if (threshold > 0 && actualRemaining <= threshold) {
+    return Math.max(0, actualRemaining - buffer);
+  }
+  return actualRemaining;
+}
+
 // POST /orders：顧客下單，商品單價一律以 Sheets 上的 Products 資料為準，不採信前端傳來的價格。
 // 驗證項目：檔期是否開放、取貨方式對應欄位是否齊全（自取要有 pickup_slot_id 且時段屬於這個檔期，
 // 宅配要有 delivery_address）、單一商品是否超過 max_per_order、
@@ -346,15 +375,8 @@ async function handleCreateOrder(request, env) {
   const requestedQuantity = orderItems.reduce((sum, item) => sum + item.quantity, 0);
   const quantityCap = toNumber(campaign.total_quantity_cap);
   if (quantityCap > 0) {
-    const countedOrderIds = new Set(
-      existingOrders
-        .filter((o) => o.campaign_id === campaign_id && o.order_status !== "cancelled")
-        .map((o) => o.order_id)
-    );
-    const alreadyOrdered = existingOrderItems.reduce(
-      (sum, item) => (countedOrderIds.has(item.order_id) ? sum + toNumber(item.quantity) : sum),
-      0
-    );
+    // 這裡刻意用未經緩衝的真實剩餘量把關，不能讓顧客用「顯示用剩餘量」的緩衝騙過最終檢查。
+    const alreadyOrdered = campaignOrderedQuantity(campaign_id, existingOrders, existingOrderItems);
 
     if (alreadyOrdered + requestedQuantity > quantityCap) {
       const remaining = Math.max(0, quantityCap - alreadyOrdered);
@@ -696,8 +718,17 @@ async function handleCreateCampaign(request, env) {
     return json({ ok: false, error: "請求格式錯誤，需要 JSON" }, { status: 400 });
   }
 
-  const { name, start_date, end_date, total_quantity_cap, status, pickup_slots, copy_products_from_campaign_id } =
-    body || {};
+  const {
+    name,
+    start_date,
+    end_date,
+    total_quantity_cap,
+    low_stock_threshold,
+    low_stock_buffer,
+    status,
+    pickup_slots,
+    copy_products_from_campaign_id,
+  } = body || {};
   if (!name) {
     return json({ ok: false, error: "缺少必要欄位（name）" }, { status: 400 });
   }
@@ -715,7 +746,16 @@ async function handleCreateCampaign(request, env) {
 
   const campaignId = generateCampaignId(existingCampaigns);
   await appendRows(accessToken, spreadsheetId, "Campaigns", [
-    [campaignId, name, campaignStatus, start_date || "", end_date || "", toNumber(total_quantity_cap)],
+    [
+      campaignId,
+      name,
+      campaignStatus,
+      start_date || "",
+      end_date || "",
+      toNumber(total_quantity_cap),
+      toNumber(low_stock_threshold),
+      toNumber(low_stock_buffer),
+    ],
   ]);
 
   const slotsInput = Array.isArray(pickup_slots) ? pickup_slots : [];
@@ -758,6 +798,8 @@ async function handleCreateCampaign(request, env) {
         start_date: start_date || "",
         end_date: end_date || "",
         total_quantity_cap: toNumber(total_quantity_cap),
+        low_stock_threshold: toNumber(low_stock_threshold),
+        low_stock_buffer: toNumber(low_stock_buffer),
         pickup_slots: newSlots.map(({ slot_id, date, time_range }) => ({ slot_id, date, time_range })),
       },
       copied_product_count: copiedProductCount,
@@ -799,6 +841,8 @@ async function handleUpdateCampaign(request, env, campaignId) {
   if (body.start_date !== undefined) updated.start_date = body.start_date;
   if (body.end_date !== undefined) updated.end_date = body.end_date;
   if (body.total_quantity_cap !== undefined) updated.total_quantity_cap = toNumber(body.total_quantity_cap);
+  if (body.low_stock_threshold !== undefined) updated.low_stock_threshold = toNumber(body.low_stock_threshold);
+  if (body.low_stock_buffer !== undefined) updated.low_stock_buffer = toNumber(body.low_stock_buffer);
 
   await updateRow(
     accessToken,
@@ -851,6 +895,8 @@ async function handleUpdateCampaign(request, env, campaignId) {
       start_date: updated.start_date,
       end_date: updated.end_date,
       total_quantity_cap: toNumber(updated.total_quantity_cap),
+      low_stock_threshold: toNumber(updated.low_stock_threshold),
+      low_stock_buffer: toNumber(updated.low_stock_buffer),
       pickup_slots: pickupSlotsResult,
     },
   });
@@ -900,6 +946,8 @@ async function handleAdminCampaigns(env) {
     start_date: c.start_date,
     end_date: c.end_date,
     total_quantity_cap: toNumber(c.total_quantity_cap),
+    low_stock_threshold: toNumber(c.low_stock_threshold),
+    low_stock_buffer: toNumber(c.low_stock_buffer),
     pickup_slots: slots
       .filter((s) => s.campaign_id === c.campaign_id)
       .map((s) => ({ slot_id: s.slot_id, date: s.date, time_range: s.time_range })),
@@ -1077,25 +1125,37 @@ async function handleGetSettings(env) {
 // GET /campaigns：目前還在預購中的檔期（status=active 且預購結束日還沒過），含各自的取貨時段。
 async function handleCampaigns(env) {
   const { accessToken, spreadsheetId } = await getAuthedContext(env);
-  const [campaigns, slots] = await Promise.all([
+  const [campaigns, slots, orders, orderItems] = await Promise.all([
     getSheetRows(accessToken, spreadsheetId, "Campaigns"),
     getSheetRows(accessToken, spreadsheetId, "PickupSlots"),
+    getSheetRows(accessToken, spreadsheetId, "Orders"),
+    getSheetRows(accessToken, spreadsheetId, "Order_Items"),
   ]);
 
   const today = nowInTaipei().dateISO;
   const active = campaigns
     .filter((c) => isCampaignOngoing(c, today))
-    .map((c) => ({
-      campaign_id: c.campaign_id,
-      name: c.name,
-      status: c.status,
-      start_date: c.start_date,
-      end_date: c.end_date,
-      total_quantity_cap: toNumber(c.total_quantity_cap),
-      pickup_slots: slots
-        .filter((s) => s.campaign_id === c.campaign_id)
-        .map((s) => ({ slot_id: s.slot_id, date: s.date, time_range: s.time_range })),
-    }));
+    .map((c) => {
+      const orderedQty = campaignOrderedQuantity(c.campaign_id, orders, orderItems);
+      const cap = toNumber(c.total_quantity_cap);
+      const threshold = toNumber(c.low_stock_threshold);
+      const actualRemaining = cap > 0 ? Math.max(0, cap - orderedQty) : null;
+      return {
+        campaign_id: c.campaign_id,
+        name: c.name,
+        status: c.status,
+        start_date: c.start_date,
+        end_date: c.end_date,
+        total_quantity_cap: cap,
+        // 給前端顯示/當作數量選擇器上限用的剩餘量，可能因為低庫存緩衝而比實際剩餘量小，
+        // 詳見 campaignDisplayRemaining()；沒有設定總量上限時是 null（不限制）。
+        remaining_quantity: campaignDisplayRemaining(c, orderedQty),
+        low_stock: actualRemaining !== null && threshold > 0 && actualRemaining <= threshold,
+        pickup_slots: slots
+          .filter((s) => s.campaign_id === c.campaign_id)
+          .map((s) => ({ slot_id: s.slot_id, date: s.date, time_range: s.time_range })),
+      };
+    });
 
   return json({ ok: true, campaigns: active });
 }

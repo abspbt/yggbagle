@@ -26,6 +26,7 @@
 
     stepProducts: document.getElementById("step-products"),
     productList: document.getElementById("product-list"),
+    lowStockBanner: document.getElementById("low-stock-banner"),
 
     stepDelivery: document.getElementById("step-delivery"),
     deliveryFeeSub: document.getElementById("delivery-fee-sub"),
@@ -63,6 +64,10 @@
     islandWarning: document.getElementById("island-warning"),
     islandWarningCancel: document.getElementById("island-warning-cancel"),
     islandWarningLine: document.getElementById("island-warning-line"),
+
+    lowStockWarning: document.getElementById("low-stock-warning"),
+    lowStockCount: document.getElementById("low-stock-count"),
+    lowStockWarningOk: document.getElementById("low-stock-warning-ok"),
   };
 
   // 只做關鍵字比對提醒，不是嚴格擋單機制——打法不規則、縣名寫法不同都可能抓不到，
@@ -81,6 +86,55 @@
 
   function hideIslandWarning() {
     els.islandWarning.classList.add("hidden");
+  }
+
+  // 剩餘量偏低時，第一次加入購物車跳一次提醒即可，不用每次點+都打斷顧客——
+  // 之後想繼續加，靠商品旁邊「每人限購」同一行的剩餘量文字持續提示就好。
+  var lowStockWarningShown = false;
+
+  function maybeShowLowStockWarning() {
+    if (lowStockWarningShown) return;
+    if (!state.campaign || !state.campaign.low_stock) return;
+    if (cartCount() === 0) return;
+    lowStockWarningShown = true;
+    var remaining = state.campaign.remaining_quantity;
+    els.lowStockCount.textContent = typeof remaining === "number" ? String(remaining) : "";
+    els.lowStockWarning.classList.remove("hidden");
+  }
+
+  function hideLowStockWarning() {
+    els.lowStockWarning.classList.add("hidden");
+  }
+
+  // 顯示給顧客看、也是數量選擇器能加到的上限：檔期共用一個剩餘量（不分品項），
+  // 沒有設定總量上限（remaining_quantity 是 null）時視為不限制。
+  function campaignRemainingCap() {
+    var r = state.campaign && state.campaign.remaining_quantity;
+    return typeof r === "number" ? r : Infinity;
+  }
+
+  // 低庫存時的全域提示：剩餘量是整檔期共用的、不是特定品項的庫存，所以不掛在單一商品卡片旁邊
+  // （會讓人誤以為是那個口味只剩幾個），改用選商品步驟標題下方一整條的提示，彈窗只跳一次、
+  // 這條提示會持續顯示，讓顧客選到後面還能看到最新剩餘量。
+  function renderLowStockBanner() {
+    if (!els.lowStockBanner) return;
+    if (!state.campaign || !state.campaign.low_stock) {
+      els.lowStockBanner.classList.add("hidden");
+      return;
+    }
+    var remaining = state.campaign.remaining_quantity;
+    if (typeof remaining !== "number") {
+      els.lowStockBanner.classList.add("hidden");
+      return;
+    }
+    els.lowStockBanner.textContent = "⚠️ 本檔期剩餘 " + remaining + " 份，目前還有其他人正在選購，數量有限、售完為止";
+    els.lowStockBanner.classList.remove("hidden");
+  }
+
+  function maxQtyForProduct(product, currentQty) {
+    var perProductMax = product.max_per_order > 0 ? product.max_per_order : Infinity;
+    var campaignMax = campaignRemainingCap() - cartCount() + currentQty;
+    return Math.max(0, Math.min(perProductMax, campaignMax));
   }
 
   var stepSections = {
@@ -338,6 +392,7 @@
   }
 
   function renderProducts() {
+    renderLowStockBanner();
     els.productList.innerHTML = "";
     productGroups().forEach(function (group) {
       if (group.items.length === 1) {
@@ -383,8 +438,8 @@
   }
 
   function buildProductCard(p) {
-    var remaining = p.max_per_order > 0 ? p.max_per_order : Infinity;
     var qty = state.cart[p.product_id] || 0;
+    var remaining = maxQtyForProduct(p, qty);
 
     var card = document.createElement("div");
     card.className = "product-card";
@@ -444,8 +499,8 @@
         (p.max_per_order ? "每人限購 " + p.max_per_order + " 袋" : "");
       priceRow.appendChild(priceBox);
 
-      var remaining = p.max_per_order > 0 ? p.max_per_order : Infinity;
       var qty = state.cart[p.product_id] || 0;
+      var remaining = maxQtyForProduct(p, qty);
       var stepBox = document.createElement("div");
       stepBox.className = "variant-stepper-box";
       stepBox.appendChild(buildStepper(p, qty, remaining));
@@ -463,13 +518,15 @@
       return p.product_id === productId;
     });
     if (!product) return;
-    var max = product.max_per_order > 0 ? product.max_per_order : Infinity;
+    var currentQty = state.cart[productId] || 0;
+    var max = maxQtyForProduct(product, currentQty);
     qty = Math.max(0, Math.min(qty, max));
     if (qty === 0) {
       delete state.cart[productId];
     } else {
       state.cart[productId] = qty;
     }
+    maybeShowLowStockWarning();
     renderProducts();
     updateCartBar();
   }
@@ -715,6 +772,7 @@
   els.cartNextBtn.addEventListener("click", goNext);
   els.islandWarningCancel.addEventListener("click", hideIslandWarning);
   els.islandWarningLine.addEventListener("click", hideIslandWarning);
+  els.lowStockWarningOk.addEventListener("click", hideLowStockWarning);
   // 用 ResizeObserver 只監看這兩個固定區塊「自己的」高度變化（例如公告文字換行、
   // 螢幕轉向），不要監聽 window 的 resize 事件——手機 Safari 捲動時網址列自動
   // 收合/展開也會觸發 window resize，這會讓固定區塊在每次捲動時反覆重算高度、
@@ -1045,6 +1103,7 @@
     state.cart = {};
     state.selectedSlotId = null;
     state.deliveryMethod = null;
+    lowStockWarningShown = false;
     els.customerName.value = "";
     els.customerPhone.value = "";
     els.customerNote.value = "";

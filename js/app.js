@@ -1255,7 +1255,7 @@ async function renderCampaignEdit(id) {
       if (!c) { navigate('more/campaigns'); return; }
       hasOrders = (ordersData.orders || []).some(o => o.campaign_id === id);
     } else {
-      c = { campaign_id: null, name: '', start_date: '', end_date: '', pickup_slots: [], total_quantity_cap: '', status: 'active' };
+      c = { campaign_id: null, name: '', start_date: '', end_date: '', pickup_slots: [], total_quantity_cap: '', low_stock_threshold: '', low_stock_buffer: '', status: 'active' };
       hasOrders = false;
       const [campaignsData, productsData] = await Promise.all([
         Api.get('/admin/campaigns'),
@@ -1329,6 +1329,15 @@ async function renderCampaignEdit(id) {
         <input class="field-input" id="f-cap" type="number" inputmode="numeric" value="${c.total_quantity_cap || ''}" placeholder="0" />
       </div>
       <div class="field">
+        <label class="field-label">剩餘量低於多少開始顯示保守數字（留空代表不啟用）</label>
+        <input class="field-input" id="f-low-stock-threshold" type="number" inputmode="numeric" value="${c.low_stock_threshold || ''}" placeholder="例：10" />
+      </div>
+      <div class="field">
+        <label class="field-label">保守顯示要少算幾份（留空代表 0，不打折扣）</label>
+        <input class="field-input" id="f-low-stock-buffer" type="number" inputmode="numeric" value="${c.low_stock_buffer || ''}" placeholder="例：5" />
+        <div class="field-hint">兩個欄位都是給「總量上限」用的保護機制：剩餘量低於門檻時，顧客網站會顯示比實際剩餘更保守的數字（少顯示這裡設定的份數），避免多人同時搶最後名額時真的超賣。兩欄都留空就不啟用，維持顯示實際剩餘量。</div>
+      </div>
+      <div class="field">
         <label class="field-label">檔期狀態</label>
         <select class="field-select" id="f-status">
           <option value="active" ${c.status !== 'ended' ? 'selected' : ''}>進行中</option>
@@ -1375,6 +1384,8 @@ async function renderCampaignEdit(id) {
       start_date: root.querySelector('#f-start').value,
       end_date: root.querySelector('#f-end').value,
       total_quantity_cap: Number(root.querySelector('#f-cap').value) || 0,
+      low_stock_threshold: Number(root.querySelector('#f-low-stock-threshold').value) || 0,
+      low_stock_buffer: Number(root.querySelector('#f-low-stock-buffer').value) || 0,
       status: root.querySelector('#f-status').value,
       pickup_slots: slots.map(s => ({ date: s.date, time_range: s.time_range })),
     };
