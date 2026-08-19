@@ -1483,22 +1483,6 @@ async function renderShop() {
       </div>
 
       <div class="section">
-        <div class="section-title">匯款資訊</div>
-        <div class="field">
-          <label class="field-label">銀行</label>
-          <input class="field-input" id="f-bank" value="${escapeHtml(s.bank_name || '')}" />
-        </div>
-        <div class="field">
-          <label class="field-label">帳號</label>
-          <input class="field-input" id="f-bankaccount" value="${escapeHtml(s.bank_account || '')}" />
-        </div>
-        <div class="field">
-          <label class="field-label">戶名</label>
-          <input class="field-input" id="f-bankowner" value="${escapeHtml(s.bank_owner || '')}" />
-        </div>
-      </div>
-
-      <div class="section">
         <div class="section-title">宅配</div>
         <div class="field">
           <label class="field-label">運費（元）</label>
@@ -1523,9 +1507,6 @@ async function renderShop() {
         shop_line: root.querySelector('#f-line').value.trim(),
         shop_phone: root.querySelector('#f-phone').value.trim(),
         shop_address: root.querySelector('#f-address').value.trim(),
-        bank_name: root.querySelector('#f-bank').value.trim(),
-        bank_account: root.querySelector('#f-bankaccount').value.trim(),
-        bank_owner: root.querySelector('#f-bankowner').value.trim(),
         shipping_fee: Number(root.querySelector('#f-shipping').value) || 0,
       });
       dialog.success('店家資料已儲存');

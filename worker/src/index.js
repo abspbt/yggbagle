@@ -71,6 +71,10 @@ const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_LOCKOUT_SECONDS = 15 * 60;
 const LOGIN_THROTTLE_KEYS = new Set(["login_fail_count", "login_locked_until"]);
 
+// 匯款資訊已下架（資安/防詐考量，改用 LINE Pay／全支付／現金自取等付款方式），這幾個
+// key 就算 Settings 分頁裡還留著舊資料，公開的 GET /settings 也一律不回傳。
+const REMOVED_SETTINGS_KEYS = new Set(["bank_name", "bank_account", "bank_owner"]);
+
 // Settings 分頁的 upsert（key 存在就覆寫、不存在就新增一列），給登入節流跟之後任何
 // 需要單一存一組 key-value 的地方共用。
 async function upsertSetting(accessToken, spreadsheetId, key, value) {
@@ -1050,8 +1054,9 @@ async function handleGetSettings(env) {
   const settings = {};
   for (const row of rows) {
     // login_fail_count/login_locked_until 是 PIN 登入防暴力破解用的內部節流計數
-    // （見 handleLogin），不是給顧客看的店家資訊，這支公開 API 不回傳。
-    if (row.setting_key && !LOGIN_THROTTLE_KEYS.has(row.setting_key)) {
+    // （見 handleLogin），不是給顧客看的店家資訊；bank_name/bank_account/bank_owner
+    // 是已下架的匯款資訊。這兩類 key 這支公開 API 都不回傳。
+    if (row.setting_key && !LOGIN_THROTTLE_KEYS.has(row.setting_key) && !REMOVED_SETTINGS_KEYS.has(row.setting_key)) {
       settings[row.setting_key] = row.setting_value;
     }
   }

@@ -56,7 +56,6 @@
     doneOrderTotal: document.getElementById("done-order-total"),
     saveShareBtn: document.getElementById("save-share-btn"),
     saveShareStatus: document.getElementById("save-share-status"),
-    doneBankInfo: document.getElementById("done-bank-info"),
     doneLineLink: document.getElementById("done-line-link"),
     restartBtn: document.getElementById("restart-btn"),
     headerLineLink: document.getElementById("header-line-link"),
@@ -965,12 +964,6 @@
     setShareStatus("");
 
     var s = state.settings;
-    els.doneBankInfo.innerHTML =
-      bankRow("銀行", s.bank_name) +
-      bankRow("帳號", s.bank_account) +
-      bankRow("戶名", s.bank_owner) +
-      bankRow("金額", money(grandTotal));
-
     var lineUrl = buildLineUrl(s.shop_line);
     if (lineUrl) {
       els.doneLineLink.href = lineUrl;
