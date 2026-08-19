@@ -11,7 +11,6 @@
     loading: document.getElementById("loading"),
     paused: document.getElementById("paused"),
     pauseMessage: document.getElementById("pause-message"),
-    empty: document.getElementById("empty"),
     error: document.getElementById("error"),
     errorMessage: document.getElementById("error-message"),
     retryBtn: document.getElementById("retry-btn"),
@@ -128,10 +127,17 @@
   }
 
   function showOnly(el) {
-    [els.loading, els.paused, els.empty, els.error].forEach(function (e) {
+    [els.loading, els.paused, els.error].forEach(function (e) {
       e.classList.add("hidden");
     });
     if (el) el.classList.remove("hidden");
+  }
+
+  // 「老闆手動暫停」跟「沒有進行中的檔期」共用同一段顧客端訊息（後台「暫停時顧客端顯示訊息」設定）。
+  function showPausedMessage() {
+    showOnly(els.paused);
+    els.pauseMessage.textContent =
+      state.settings.pause_message || "目前暫停接單，請稍後再回來看看。";
   }
 
   function setStepsVisible(visible) {
@@ -190,9 +196,7 @@
       applyShopInfo();
 
       if (!isTrue(state.settings.preorder_open)) {
-        showOnly(els.paused);
-        els.pauseMessage.textContent =
-          state.settings.pause_message || "目前暫停接單，請稍後再回來看看。";
+        showPausedMessage();
         return;
       }
 
@@ -200,7 +204,7 @@
       state.products = productsData.products || [];
 
       if (campaigns.length === 0 || state.products.length === 0) {
-        showOnly(els.empty);
+        showPausedMessage();
         return;
       }
 
