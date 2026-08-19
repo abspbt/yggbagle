@@ -250,7 +250,7 @@ npm run deploy
 
 ### `GET /settings`（Phase 4 新增）
 
-公開讀取店家資料、公告、預購開關等設定值，給顧客網站用。回傳 `Settings` 分頁目前全部的 key-value（裡面沒有顧客個資，都是可以公開的店家資訊）。
+公開讀取店家資料、公告、預購開關等設定值，給顧客網站用。回傳 `Settings` 分頁目前全部的 key-value（裡面沒有顧客個資，都是可以公開的店家資訊），但 `bank_name`/`bank_account`/`bank_owner`（已下架的匯款資訊，見下方說明）一律排除，就算 Sheets 裡還留著舊資料也不會回傳。
 
 ```json
 {
@@ -261,9 +261,6 @@ npm run deploy
     "shop_line": "@ykjbakery",
     "shop_phone": "0912-345-678",
     "shop_address": "台中市西區美村路一段123號",
-    "bank_name": "玉山銀行 808",
-    "bank_account": "1234-567-890123",
-    "bank_owner": "陳O雯",
     "announcement_text": "本週六預購開放中！",
     "announcement_visible": "TRUE",
     "preorder_open": "TRUE",
@@ -491,9 +488,6 @@ npm run deploy
 | `shop_line` | LINE 官方帳號 |
 | `shop_phone` | 店家電話 |
 | `shop_address` | 店家地址 |
-| `bank_name` | 匯款銀行名稱 |
-| `bank_account` | 匯款帳號 |
-| `bank_owner` | 匯款戶名 |
 | `announcement_text` | 公告文字 |
 | `announcement_visible` | 公告是否顯示（`TRUE`/`FALSE`） |
 | `preorder_open` | 預購開關（`TRUE`/`FALSE`），老闆手動的臨時暫停開關；顧客端實際狀態還要看有沒有進行中的檔期，見 `GET /settings` 的 `preorder_open_effective` |
@@ -508,6 +502,7 @@ npm run deploy
 ```
 
 - 因為是 upsert，key 打錯字不會報錯、只會在 Sheets 裡多一列新的設定，要小心拼字——盡量用上表已經有的 key，不要自己發明新的
+- `bank_name`/`bank_account`/`bank_owner`（匯款銀行/帳號/戶名）已下架（資安/防詐考量），不要再用 `PATCH /settings` 寫入這幾個 key；`GET /settings` 也已經把它們排除在回傳之外
 
 ## 老闆後台專用讀取／檔期管理 API（Phase 6 新增）
 
