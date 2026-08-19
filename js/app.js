@@ -141,6 +141,50 @@ function showDialog({ title, body, confirmText = '確認', cancelText = '取消'
   document.body.appendChild(overlay);
 }
 
+// 儲存流程用的「處理中 → 完成/失敗」彈窗：按下儲存立刻顯示處理中，
+// API 回應後同一個彈窗切換內容，避免儲存按鈕按下去沒有任何畫面反應。
+function showProcessingDialog() {
+  const overlay = el(`
+    <div class="overlay centered">
+      <div class="dialog process-dialog">
+        <div class="process-spinner"></div>
+        <div class="process-text">處理中…</div>
+      </div>
+    </div>
+  `);
+  document.body.appendChild(overlay);
+  const dialog = overlay.querySelector('.dialog');
+
+  function renderResult(title, body, danger) {
+    dialog.className = 'dialog';
+    dialog.innerHTML = `
+      <div class="dialog-title">${escapeHtml(title)}</div>
+      ${body ? `<div class="dialog-body">${escapeHtml(body)}</div>` : ''}
+      <div class="btn-row" style="margin-top:${body ? '0' : '16px'}">
+        <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-act="confirm">確定</button>
+      </div>
+    `;
+    return new Promise((resolve) => {
+      dialog.querySelector('[data-act="confirm"]').addEventListener('click', () => {
+        overlay.remove();
+        resolve();
+      });
+    });
+  }
+
+  return {
+    success(title, onConfirm) {
+      renderResult(title).then(() => onConfirm && onConfirm());
+    },
+    error(message) {
+      renderResult('儲存失敗', message, true);
+    },
+    close() {
+      overlay.remove();
+    },
+  };
+}
+
 // ---------------- Layout：頂部列 ----------------
 function topbar({ title, back, action }) {
   return `
@@ -949,7 +993,7 @@ async function renderProductEdit(id) {
     root.querySelector('#f-active').classList.toggle('on', activeVal);
   });
 
-  root.querySelector('#btn-save').addEventListener('click', async () => {
+  root.querySelector('#btn-save').addEventListener('click', async (e) => {
     const name = root.querySelector('#f-name').value.trim();
     if (!name) { showToast('請輸入商品名稱'); return; }
     const campaignId = root.querySelector('#f-campaign').value;
@@ -964,17 +1008,20 @@ async function renderProductEdit(id) {
       variant_group: root.querySelector('#f-variant-group').value.trim(),
       variant_label: root.querySelector('#f-variant-label').value.trim(),
     };
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const dialog = showProcessingDialog();
     try {
       if (isNew) {
         await Api.post('/products', payload);
       } else {
         await Api.patch(`/products/${encodeURIComponent(data.product_id)}`, payload);
       }
-      showToast('已儲存');
-      navigate('products');
+      dialog.success('已儲存', () => navigate('products'));
     } catch (err) {
-      if (err.isAuthError) { navigate('login'); return; }
-      showToast(err.message);
+      btn.disabled = false;
+      if (err.isAuthError) { dialog.close(); navigate('login'); return; }
+      dialog.error(err.message);
     }
   });
 
@@ -1095,16 +1142,21 @@ async function renderAnnouncement() {
   root.querySelector('#f-text').addEventListener('input', paint);
   paint();
 
-  root.querySelector('#btn-save').addEventListener('click', async () => {
+  root.querySelector('#btn-save').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const dialog = showProcessingDialog();
     try {
       await Api.patch('/settings', {
         announcement_text: root.querySelector('#f-text').value,
         announcement_visible: boolToSetting(visibleVal),
       });
-      showToast('公告已儲存');
+      dialog.success('公告已儲存');
+      btn.disabled = false;
     } catch (err) {
-      if (err.isAuthError) { navigate('login'); return; }
-      showToast(err.message);
+      btn.disabled = false;
+      if (err.isAuthError) { dialog.close(); navigate('login'); return; }
+      dialog.error(err.message);
     }
   });
 }
@@ -1315,7 +1367,7 @@ async function renderCampaignEdit(id) {
     root.querySelector('#f-copy-products').classList.toggle('on', copyProductsVal);
   });
 
-  root.querySelector('#btn-save').addEventListener('click', async () => {
+  root.querySelector('#btn-save').addEventListener('click', async (e) => {
     const name = root.querySelector('#f-name').value.trim();
     if (!name) { showToast('請輸入檔期名稱'); return; }
     const payload = {
@@ -1329,6 +1381,9 @@ async function renderCampaignEdit(id) {
     if (copyProductsVal && prevCampaign) {
       payload.copy_products_from_campaign_id = prevCampaign.campaign_id;
     }
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const dialog = showProcessingDialog();
     try {
       let result;
       if (isNew) {
@@ -1336,11 +1391,12 @@ async function renderCampaignEdit(id) {
       } else {
         result = await Api.patch(`/campaigns/${encodeURIComponent(c.campaign_id)}`, payload);
       }
-      showToast(result && result.copied_product_count ? `已儲存，並複製了 ${result.copied_product_count} 項商品` : '已儲存');
-      navigate('more/campaigns');
+      const msg = result && result.copied_product_count ? `已儲存，並複製了 ${result.copied_product_count} 項商品` : '已儲存';
+      dialog.success(msg, () => navigate('more/campaigns'));
     } catch (err) {
-      if (err.isAuthError) { navigate('login'); return; }
-      showToast(err.message);
+      btn.disabled = false;
+      if (err.isAuthError) { dialog.close(); navigate('login'); return; }
+      dialog.error(err.message);
     }
   });
 
@@ -1456,7 +1512,10 @@ async function renderShop() {
     </div>
   `);
 
-  root.querySelector('#btn-save').addEventListener('click', async () => {
+  root.querySelector('#btn-save').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const dialog = showProcessingDialog();
     try {
       await Api.patch('/settings', {
         shop_name: root.querySelector('#f-shopname').value.trim(),
@@ -1469,10 +1528,12 @@ async function renderShop() {
         bank_owner: root.querySelector('#f-bankowner').value.trim(),
         shipping_fee: Number(root.querySelector('#f-shipping').value) || 0,
       });
-      showToast('店家資料已儲存');
+      dialog.success('店家資料已儲存');
+      btn.disabled = false;
     } catch (err) {
-      if (err.isAuthError) { navigate('login'); return; }
-      showToast(err.message);
+      btn.disabled = false;
+      if (err.isAuthError) { dialog.close(); navigate('login'); return; }
+      dialog.error(err.message);
     }
   });
 }
@@ -1527,13 +1588,18 @@ async function renderToggle() {
   root.querySelector('#f-toggle').addEventListener('click', () => {
     confirmTogglePreorder(preorderOpen, () => renderToggle());
   });
-  root.querySelector('#btn-save-msg').addEventListener('click', async () => {
+  root.querySelector('#btn-save-msg').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const dialog = showProcessingDialog();
     try {
       await Api.patch('/settings', { pause_message: root.querySelector('#f-pausemsg').value });
-      showToast('暫停訊息已儲存');
+      dialog.success('暫停訊息已儲存');
+      btn.disabled = false;
     } catch (err) {
-      if (err.isAuthError) { navigate('login'); return; }
-      showToast(err.message);
+      btn.disabled = false;
+      if (err.isAuthError) { dialog.close(); navigate('login'); return; }
+      dialog.error(err.message);
     }
   });
 }
