@@ -38,6 +38,7 @@
       <button id="cart-back-btn" class="cart-back-btn hidden" type="button">上一步</button>
       <button id="cart-next-btn" class="cart-cta" type="button">下一步</button>
     </div>
+    <p id="low-stock-banner" class="low-stock-banner hidden">目前庫存緊張，實際可以購買數量，以訂單明細為主</p>
   </div>
 
   <div id="category-tabs" class="tabs hidden"></div>
@@ -64,7 +65,6 @@
     <!-- Step：選商品 -->
     <section id="step-products" class="step hidden">
       <h2 id="step-products-title" class="step-title">選商品</h2>
-      <p id="low-stock-banner" class="low-stock-banner hidden"></p>
       <div id="product-list" class="product-list"></div>
     </section>
 
@@ -183,16 +183,6 @@
     <div class="overlay-actions">
       <button type="button" id="island-warning-cancel" class="btn btn-secondary">取消</button>
       <a id="island-warning-line" class="btn btn-line" href="#" target="_blank" rel="noopener">開啟 LINE 聯絡老闆</a>
-    </div>
-  </div>
-</div>
-
-<div id="low-stock-warning" class="overlay hidden">
-  <div class="overlay-card">
-    <p class="overlay-icon" aria-hidden="true">⚠️</p>
-    <p class="overlay-text">本檔期目前只剩下 <span id="low-stock-count"></span> 份可以預購，現在還有其他人正在選購，數量有限、售完為止</p>
-    <div class="overlay-actions">
-      <button type="button" id="low-stock-warning-ok" class="btn btn-primary">我知道了，繼續選購</button>
     </div>
   </div>
 </div>

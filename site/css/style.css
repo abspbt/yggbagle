@@ -295,6 +295,17 @@ body.keyboard-open .top-info {
   gap: 16px;
 }
 
+.low-stock-banner {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  line-height: 1.6;
+  text-align: center;
+}
+
 .cart-cta,
 .cart-back-btn {
   flex: 1;
@@ -713,15 +724,6 @@ body.keyboard-open .step-title::before {
   color: var(--color-text-muted);
 }
 
-.low-stock-banner {
-  margin: -4px 0 14px;
-  padding: 10px 14px;
-  background: var(--color-warning-bg);
-  color: var(--color-warning);
-  border-radius: var(--radius-sm);
-  font-size: 13.5px;
-  line-height: 1.6;
-}
 
 /* ---------- 訂單摘要 ---------- */
 

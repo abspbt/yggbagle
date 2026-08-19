@@ -56,10 +56,12 @@
 - ✅ 完成頁文案調整，引導客人透過 LINE 跟老闆確認訂單及付款方式（見下方「近期優化備註」，
   PR #61）：付款這個步驟改成統一由老闆透過 LINE 跟顧客確認處理（帳戶資訊不公開顯示在
   網站上，改由老闆私下透過 LINE 提供），付款方式清單重新加回「匯款」選項
-- ✅ 新增檔期低庫存緩衝機制，解決顧客測試回報「訂購超過上限要填到結帳才會知道」的問題
-  （見下方「近期優化備註」，PR #62）：`GET /campaigns` 即時算出顯示用剩餘量，顧客網站
-  數量選擇器直接卡在這個上限；剩餘量偏低時還會套用緩衝（可在後台 PWA「預購檔期設定」頁
-  設定），降低多人同時搶最後名額而超賣的機率，真正的把關仍在 `POST /orders`
+- ✅ 新增檔期低庫存提示，解決顧客測試回報「訂購超過上限要填到結帳才會知道」的問題
+  （見下方「近期優化備註」，PR #62 + #63）：`GET /campaigns` 即時算出真實剩餘量，顧客
+  網站數量選擇器直接卡在這個上限；剩餘量偏低時購物車列下方會顯示「目前庫存緊張，實際
+  可以購買數量，以訂單明細為主」的免責提示，真正的把關仍在 `POST /orders`。**PR #62
+  原本的做法是剩餘量偏低時刻意打折顯示（緩衝）+ 跳一次性彈窗，後來考量消費者保護法規
+  疑慮，PR #63 改成如實顯示真實剩餘量、拿掉彈窗，只保留購物車列下方的常駐免責提示**
 - ⏭️ 下一步：Phase 7（部署 + 網域設定）——顧客網站 `site/` 目前完全還沒部署到任何正式網址
   （只在本機瀏覽器測試過完整流程）；老闆後台 PWA 目前暫時掛在 GitHub Pages
   （`https://abspbt.github.io/yjg-order/`），要不要正式搬到 Cloudflare Pages 還沒決定；
@@ -358,6 +360,41 @@
     `worker/dashboard-single-file.js`），而且**需要老闆手動在 Google Sheets 的
     `Campaigns` 分頁最右邊加上 `low_stock_threshold`、`low_stock_buffer` 兩欄**才會
     真正啟用緩衝（沒加之前效果等同不啟用，不影響其他功能）
+  - ⚠️ **這個緩衝打折顯示的做法，PR #63 已經拿掉、改成如實顯示，見下方 PR #63 條目**——
+    留著這段記錄是為了完整記錄設計演進過程，實際部署請照 PR #63 的版本，不要照這裡的
+    `low_stock_buffer` 欄位設定
+- 拿掉低庫存緩衝打折顯示與彈窗，改成如實顯示剩餘量 + 購物車下方免責提示（老闆考量消費者
+  保護法規疑慮主動提出，PR #63）：PR #62 剛做完的「剩餘量偏低時刻意少顯示幾份」緩衝機制，
+  老闆後來想到這個做法可能讓顧客看到的數字跟實際能買到的數量不一致，有消費者保護法規上
+  的疑慮，主動要求拿掉
+  - `GET /campaigns` 的 `remaining_quantity` 改回**一律是真實剩餘量**，不再打折扣；
+    `campaignDisplayRemaining()` 改名成 `campaignRemainingQuantity()`，邏輯簡化成單純
+    「總量上限 − 已訂購量」，不再讀 `low_stock_buffer`
+  - `Campaigns.low_stock_buffer` 欄位整個拿掉（後端讀寫、老闆後台 PWA「預購檔期設定」頁
+    的輸入欄位、`worker/README.md` 都同步移除），`low_stock_threshold` 保留，但用途改成
+    單純「剩餘量低於多少開始顯示提示」，不再決定緩衝要扣幾份
+  - 低庫存時的作法從「跳一次性彈窗」改成「顧客網站購物車列（`#cart-summary`）下方固定
+    顯示一行免責文字：『目前庫存緊張，實際可以購買數量，以訂單明細為主』」——老闆認為
+    多一個彈窗會扣消費體驗分數，這句文字也刻意不帶剩餘量數字，避免顯示的數字被其他人
+    同時選購的時間差追過去而不準確
+  - 提示文字放在購物車列**內部**（`.cart-actions` 下方），不是外面獨立的一個區塊：因為
+    `.tabs` 有一條 `#cart-summary.hidden + .tabs { margin-top: 0; }` 的相鄰兄弟選擇器
+    （PR #45 修的那個 bug），依賴 `.tabs` 一定要是 `#cart-summary` 的直接下一個兄弟節點，
+    在兩者中間插新元素會弄斷這個選擇器、重新出現「購物車是空的時候標題被頁籤蓋住」的
+    舊 bug；放在 `#cart-summary` 內部就不會動到這個結構，而且購物車列的高度
+    （`--cartbar-h`）本來就是量測整個 `#cart-summary` 的 `offsetHeight`，提示文字的
+    高度會自動被算進去，不用額外處理
+  - 彈窗相關的程式碼（`#low-stock-warning` 彈窗 HTML、`maybeShowLowStockWarning()`／
+    `hideLowStockWarning()`／`lowStockWarningShown`）整個刪除，`renderLowStockBanner()`
+    改成只在 `updateCartBar()` 呼叫（原本在 `renderProducts()` 呼叫，因為提示現在是購物車
+    列的一部分，不是選商品步驟的一部分）
+  - `worker/src/index.js`、`worker/dashboard-single-file.js`、`js/app.js`、
+    `site/js/app.js`、`site/index.html`、`site/css/style.css`、`worker/README.md`
+    都已同步更新
+  - ⚠️ 這項改動**要重新部署 Worker 才會生效**（Cloudflare Dashboard 貼上
+    `worker/dashboard-single-file.js`）；Google Sheets 的 `Campaigns` 分頁**只需要加
+    `low_stock_threshold` 一欄**（PR #62 原本說要加兩欄，`low_stock_buffer` 那欄已經不用了，
+    如果已經照 PR #62 加了兩欄也沒關係，多的那欄留著不會有影響，只是不會再被讀取）
 
 Phase 0 各頁 Wireframe 定案內容已整理成交接摘要，見對話紀錄
 （今日 Dashboard、商品管理、訂單列表+付款確認、公告設定、

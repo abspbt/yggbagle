@@ -64,10 +64,6 @@
     islandWarning: document.getElementById("island-warning"),
     islandWarningCancel: document.getElementById("island-warning-cancel"),
     islandWarningLine: document.getElementById("island-warning-line"),
-
-    lowStockWarning: document.getElementById("low-stock-warning"),
-    lowStockCount: document.getElementById("low-stock-count"),
-    lowStockWarningOk: document.getElementById("low-stock-warning-ok"),
   };
 
   // 只做關鍵字比對提醒，不是嚴格擋單機制——打法不規則、縣名寫法不同都可能抓不到，
@@ -88,47 +84,23 @@
     els.islandWarning.classList.add("hidden");
   }
 
-  // 剩餘量偏低時，第一次加入購物車跳一次提醒即可，不用每次點+都打斷顧客——
-  // 之後想繼續加，靠商品旁邊「每人限購」同一行的剩餘量文字持續提示就好。
-  var lowStockWarningShown = false;
-
-  function maybeShowLowStockWarning() {
-    if (lowStockWarningShown) return;
-    if (!state.campaign || !state.campaign.low_stock) return;
-    if (cartCount() === 0) return;
-    lowStockWarningShown = true;
-    var remaining = state.campaign.remaining_quantity;
-    els.lowStockCount.textContent = typeof remaining === "number" ? String(remaining) : "";
-    els.lowStockWarning.classList.remove("hidden");
-  }
-
-  function hideLowStockWarning() {
-    els.lowStockWarning.classList.add("hidden");
-  }
-
   // 顯示給顧客看、也是數量選擇器能加到的上限：檔期共用一個剩餘量（不分品項），
-  // 沒有設定總量上限（remaining_quantity 是 null）時視為不限制。
+  // 沒有設定總量上限（remaining_quantity 是 null）時視為不限制。這裡一律是真實剩餘量，
+  // 不會為了防同時搶購而刻意少顯示——之前試過用緩衝打折顯示，考量到消費者保護法規
+  // 疑慮改掉了，改用 renderLowStockBanner() 的免責提示文字處理。
   function campaignRemainingCap() {
     var r = state.campaign && state.campaign.remaining_quantity;
     return typeof r === "number" ? r : Infinity;
   }
 
-  // 低庫存時的全域提示：剩餘量是整檔期共用的、不是特定品項的庫存，所以不掛在單一商品卡片旁邊
-  // （會讓人誤以為是那個口味只剩幾個），改用選商品步驟標題下方一整條的提示，彈窗只跳一次、
-  // 這條提示會持續顯示，讓顧客選到後面還能看到最新剩餘量。
+  // 低庫存時的提示：固定放在購物車列下方（購物車是空的時候，整個購物車列連同這行一起隱藏），
+  // 不用彈窗打斷顧客、也不特別掛在單一商品卡片旁邊（會讓人誤以為是那個口味單獨限量）。
+  // 文字刻意不帶剩餘量數字，只提醒「以訂單明細為主」，避免顯示的數字被多人同時選購時的
+  // 時間差追過去而不準確。
   function renderLowStockBanner() {
     if (!els.lowStockBanner) return;
-    if (!state.campaign || !state.campaign.low_stock) {
-      els.lowStockBanner.classList.add("hidden");
-      return;
-    }
-    var remaining = state.campaign.remaining_quantity;
-    if (typeof remaining !== "number") {
-      els.lowStockBanner.classList.add("hidden");
-      return;
-    }
-    els.lowStockBanner.textContent = "⚠️ 本檔期剩餘 " + remaining + " 份，目前還有其他人正在選購，數量有限、售完為止";
-    els.lowStockBanner.classList.remove("hidden");
+    var showBanner = !!(state.campaign && state.campaign.low_stock);
+    els.lowStockBanner.classList.toggle("hidden", !showBanner);
   }
 
   function maxQtyForProduct(product, currentQty) {
@@ -392,7 +364,6 @@
   }
 
   function renderProducts() {
-    renderLowStockBanner();
     els.productList.innerHTML = "";
     productGroups().forEach(function (group) {
       if (group.items.length === 1) {
@@ -526,7 +497,6 @@
     } else {
       state.cart[productId] = qty;
     }
-    maybeShowLowStockWarning();
     renderProducts();
     updateCartBar();
   }
@@ -592,6 +562,7 @@
   };
 
   function updateCartBar() {
+    renderLowStockBanner();
     var count = cartCount();
     if (count === 0) {
       els.cartSummary.classList.add("hidden");
@@ -772,7 +743,6 @@
   els.cartNextBtn.addEventListener("click", goNext);
   els.islandWarningCancel.addEventListener("click", hideIslandWarning);
   els.islandWarningLine.addEventListener("click", hideIslandWarning);
-  els.lowStockWarningOk.addEventListener("click", hideLowStockWarning);
   // 用 ResizeObserver 只監看這兩個固定區塊「自己的」高度變化（例如公告文字換行、
   // 螢幕轉向），不要監聽 window 的 resize 事件——手機 Safari 捲動時網址列自動
   // 收合/展開也會觸發 window resize，這會讓固定區塊在每次捲動時反覆重算高度、
@@ -1103,7 +1073,6 @@
     state.cart = {};
     state.selectedSlotId = null;
     state.deliveryMethod = null;
-    lowStockWarningShown = false;
     els.customerName.value = "";
     els.customerPhone.value = "";
     els.customerNote.value = "";
