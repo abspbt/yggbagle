@@ -249,21 +249,14 @@ function campaignOrderedQuantity(campaignId, orders, orderItems) {
   );
 }
 
-// 給顧客看的「剩餘量」：剩餘量低於 low_stock_threshold 時，刻意少顯示 low_stock_buffer 份，
-// 讓同時在選購的多個顧客之間留一點緩衝，降低大家都以為自己搶到最後名額、結果同時送出的機率。
-// 兩個欄位任一沒填就不套用緩衝，維持原本「顯示 = 實際剩餘量」的行為。
-// ⚠️ 這裡的緩衝只影響顯示與前端能選的上限，POST /orders 的把關一律用未經緩衝的真實剩餘量，
-// 不能反過來讓顧客用緩衝後的數字騙過最終檢查。
-function campaignDisplayRemaining(campaign, orderedQty) {
+// 檔期剩餘量（給顧客看、也是前端數量選擇器能選的上限）。這裡一律是真實數字，不打折扣——
+// 原本考慮過「剩餘量偏低時刻意少顯示幾份」當緩衝，但這樣顯示的數字跟實際可購買數量不一致，
+// 有消費者保護法規上的疑慮，改成如實顯示 + Campaigns.low_stock_threshold 只用來決定要不要
+// 顯示低庫存提示（見 handleCampaigns() 的 low_stock 欄位、site/js/app.js 的免責文字提示）。
+function campaignRemainingQuantity(campaign, orderedQty) {
   const cap = toNumber(campaign.total_quantity_cap);
   if (cap <= 0) return null; // 不限制
-  const actualRemaining = Math.max(0, cap - orderedQty);
-  const threshold = toNumber(campaign.low_stock_threshold);
-  const buffer = toNumber(campaign.low_stock_buffer);
-  if (threshold > 0 && actualRemaining <= threshold) {
-    return Math.max(0, actualRemaining - buffer);
-  }
-  return actualRemaining;
+  return Math.max(0, cap - orderedQty);
 }
 
 // POST /orders：顧客下單，商品單價一律以 Sheets 上的 Products 資料為準，不採信前端傳來的價格。
@@ -724,7 +717,6 @@ async function handleCreateCampaign(request, env) {
     end_date,
     total_quantity_cap,
     low_stock_threshold,
-    low_stock_buffer,
     status,
     pickup_slots,
     copy_products_from_campaign_id,
@@ -754,7 +746,6 @@ async function handleCreateCampaign(request, env) {
       end_date || "",
       toNumber(total_quantity_cap),
       toNumber(low_stock_threshold),
-      toNumber(low_stock_buffer),
     ],
   ]);
 
@@ -799,7 +790,6 @@ async function handleCreateCampaign(request, env) {
         end_date: end_date || "",
         total_quantity_cap: toNumber(total_quantity_cap),
         low_stock_threshold: toNumber(low_stock_threshold),
-        low_stock_buffer: toNumber(low_stock_buffer),
         pickup_slots: newSlots.map(({ slot_id, date, time_range }) => ({ slot_id, date, time_range })),
       },
       copied_product_count: copiedProductCount,
@@ -842,7 +832,6 @@ async function handleUpdateCampaign(request, env, campaignId) {
   if (body.end_date !== undefined) updated.end_date = body.end_date;
   if (body.total_quantity_cap !== undefined) updated.total_quantity_cap = toNumber(body.total_quantity_cap);
   if (body.low_stock_threshold !== undefined) updated.low_stock_threshold = toNumber(body.low_stock_threshold);
-  if (body.low_stock_buffer !== undefined) updated.low_stock_buffer = toNumber(body.low_stock_buffer);
 
   await updateRow(
     accessToken,
@@ -896,7 +885,6 @@ async function handleUpdateCampaign(request, env, campaignId) {
       end_date: updated.end_date,
       total_quantity_cap: toNumber(updated.total_quantity_cap),
       low_stock_threshold: toNumber(updated.low_stock_threshold),
-      low_stock_buffer: toNumber(updated.low_stock_buffer),
       pickup_slots: pickupSlotsResult,
     },
   });
@@ -947,7 +935,6 @@ async function handleAdminCampaigns(env) {
     end_date: c.end_date,
     total_quantity_cap: toNumber(c.total_quantity_cap),
     low_stock_threshold: toNumber(c.low_stock_threshold),
-    low_stock_buffer: toNumber(c.low_stock_buffer),
     pickup_slots: slots
       .filter((s) => s.campaign_id === c.campaign_id)
       .map((s) => ({ slot_id: s.slot_id, date: s.date, time_range: s.time_range })),
@@ -1139,7 +1126,7 @@ async function handleCampaigns(env) {
       const orderedQty = campaignOrderedQuantity(c.campaign_id, orders, orderItems);
       const cap = toNumber(c.total_quantity_cap);
       const threshold = toNumber(c.low_stock_threshold);
-      const actualRemaining = cap > 0 ? Math.max(0, cap - orderedQty) : null;
+      const remaining = campaignRemainingQuantity(c, orderedQty);
       return {
         campaign_id: c.campaign_id,
         name: c.name,
@@ -1147,10 +1134,11 @@ async function handleCampaigns(env) {
         start_date: c.start_date,
         end_date: c.end_date,
         total_quantity_cap: cap,
-        // 給前端顯示/當作數量選擇器上限用的剩餘量，可能因為低庫存緩衝而比實際剩餘量小，
-        // 詳見 campaignDisplayRemaining()；沒有設定總量上限時是 null（不限制）。
-        remaining_quantity: campaignDisplayRemaining(c, orderedQty),
-        low_stock: actualRemaining !== null && threshold > 0 && actualRemaining <= threshold,
+        // 給前端顯示/當作數量選擇器上限用的剩餘量，一律是真實數字；沒有設定總量上限時是
+        // null（不限制）。
+        remaining_quantity: remaining,
+        // 是否低於低庫存門檻，前端只用這個決定要不要顯示「庫存緊張」的免責提示。
+        low_stock: remaining !== null && threshold > 0 && remaining <= threshold,
         pickup_slots: slots
           .filter((s) => s.campaign_id === c.campaign_id)
           .map((s) => ({ slot_id: s.slot_id, date: s.date, time_range: s.time_range })),
