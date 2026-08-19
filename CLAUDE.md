@@ -49,6 +49,13 @@
   `/security-review`，抓出並修好兩個漏洞——`POST /orders` 的 Formula Injection（顧客姓名/
   備註/宅配地址寫入 Google Sheets 前先跳脫公式觸發字元）、`POST /auth/login` 的 PIN 防暴力
   破解節流（連續猜錯 5 次鎖定 15 分鐘）
+- ✅ 拿掉店家匯款資訊（見下方「近期優化備註」，PR #60）：資安/防詐考量，顧客網站完成頁
+  拿掉「請匯款至」帳戶卡片、老闆後台店家資料頁拿掉匯款資訊三個欄位，Worker 公開的
+  `GET /settings` 也把 `bank_name`/`bank_account`/`bank_owner` 排除在回傳之外，就算
+  Sheets 裡還留著舊資料也不會外洩
+- ✅ 完成頁文案調整，引導客人透過 LINE 跟老闆確認訂單及付款方式（見下方「近期優化備註」，
+  PR #61）：付款這個步驟改成統一由老闆透過 LINE 跟顧客確認處理（帳戶資訊不公開顯示在
+  網站上，改由老闆私下透過 LINE 提供），付款方式清單重新加回「匯款」選項
 - ⏭️ 下一步：Phase 7（部署 + 網域設定）——顧客網站 `site/` 目前完全還沒部署到任何正式網址
   （只在本機瀏覽器測試過完整流程）；老闆後台 PWA 目前暫時掛在 GitHub Pages
   （`https://abspbt.github.io/yjg-order/`），要不要正式搬到 Cloudflare Pages 還沒決定；
@@ -305,6 +312,21 @@
     也會被擋，是刻意接受的代價
   - `worker/src/index.js`、`worker/dashboard-single-file.js`、`worker/README.md` 都已
     同步更新，已透過 Cloudflare Dashboard 網頁編輯器重新部署
+- 拿掉店家匯款資訊（老闆主動提出，資安/防詐考量，PR #60）：
+  - 顧客網站完成頁的「請匯款至」卡片（銀行/帳號/戶名）整個拿掉
+  - 老闆後台「店家資料」頁拿掉匯款資訊三個欄位，儲存時也不再送出
+    `bank_name`/`bank_account`/`bank_owner` 這幾個 Settings key
+  - `GET /settings` 是公開不需登入的端點，光拿掉前端顯示還不夠——任何人都能直接打這支
+    API 拿到資料，所以就算 Google Sheets 的 `Settings` 分頁裡還留著舊的匯款資料，這支
+    公開 API 也一律排除 `bank_name`/`bank_account`/`bank_owner`，不會回傳給外部
+  - `worker/src/index.js`、`worker/dashboard-single-file.js`、`worker/README.md`、
+    `js/app.js`、`site/index.html`、`site/js/app.js` 都已同步更新，已透過 Cloudflare
+    Dashboard 網頁編輯器重新部署
+- 完成頁文案調整，引導客人透過 LINE 跟老闆確認訂單及付款方式（PR #61）：老闆說明因為
+  資安/詐騙風險，付款這個步驟改成統一由老闆在 LINE 對話裡跟顧客確認處理（帳戶資訊不會
+  再公開顯示在網站上，改由老闆私下透過 LINE 提供），付款方式清單重新加回「匯款」選項，
+  完成頁提示文字改成「💳 付款方式有匯款／LINE Pay／全支付／現金自取，請透過 LINE 跟
+  老闆確認訂單內容及付款方式，謝謝您的預購！」
 
 Phase 0 各頁 Wireframe 定案內容已整理成交接摘要，見對話紀錄
 （今日 Dashboard、商品管理、訂單列表+付款確認、公告設定、
