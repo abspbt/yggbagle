@@ -713,6 +713,16 @@ body.keyboard-open .step-title::before {
   color: var(--color-text-muted);
 }
 
+.low-stock-banner {
+  margin: -4px 0 14px;
+  padding: 10px 14px;
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
 /* ---------- 訂單摘要 ---------- */
 
 .summary-items {

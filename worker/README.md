@@ -194,6 +194,27 @@ npm run deploy
 - `訂單查詢`、`月報表` 分頁如果是用「整欄」（例如 `Orders!C:C`）或固定欄位字母寫公式，加在最右邊的新欄位不會影響到既有公式；但如果公式裡有算「這一列到最後一欄」這種寫法，改完要重新打開檢查一下數字對不對
 - `POST /products`、`POST /orders` 這兩支 API 是照欄位順序寫入 Sheets（不是照欄位名稱對應），**新欄位一定要加在最右邊**，不能插在中間，不然會寫錯欄位
 
+## 檔期低庫存緩衝設定（需要老闆手動改 Google Sheets）
+
+顧客測試時發現：檔期總量上限原本只有 `POST /orders` 送出訂單那一刻才會擋單，顧客選完一長串商品、填完姓名電話才發現已經額滿，體驗很差；而且如果同時有好幾個人在選購，大家看到的「剩餘量」都是同一個數字，容易在最後幾份的時候一起搶、一起送出，真的超賣。這次新增「低庫存緩衝」機制：剩餘量低於一個門檻之後，顯示給顧客看、也是前端數量選擇器能選的上限，會刻意比實際剩餘量再少一些，留一點緩衝空間給同時在選購的其他人。跟 `total_quantity_cap` 一樣是**整檔期共用**，不分商品/口味各自計算。
+
+### `Campaigns` 分頁：新增兩欄
+
+在最後一欄（`total_quantity_cap`）右邊，依序新增：
+
+| 新欄位 | 說明 |
+|---|---|
+| `low_stock_threshold` | 剩餘量低於多少開始套用緩衝，留空或 0 代表不啟用（此時 `remaining_quantity` 就是實際剩餘量） |
+| `low_stock_buffer` | 套用緩衝時要少顯示幾份，留空或 0 代表不打折扣 |
+
+老闆後台 PWA「預購檔期設定」頁面已經有這兩個欄位可以直接填（跟「總量上限」同一頁），不需要進 Google Sheets 操作；這裡列出來是給要手動核對 Sheets 資料，或用 `POST /campaigns`／`PATCH /campaigns/:campaign_id` API 直接帶欄位的人參考。
+
+⚠️ 這兩欄沒加之前，`toNumber(c.low_stock_threshold)` 讀到的是 `undefined`（當作 0），效果等同「不啟用」，不會出錯，只是緩衝機制不會生效——所以**沒有立刻加這兩欄不會壞掉任何現有功能**，想用這個功能的時候再加即可。
+
+### 這個緩衝只影響顯示，不影響真正的把關
+
+`GET /campaigns` 回傳的 `remaining_quantity` 是「顯示用剩餘量」，可能因為緩衝而比實際剩餘量小；`POST /orders` 送出訂單時的總量檢查，一律用未經緩衝的**真實**剩餘量把關，不會讓顧客用緩衝後的數字騙過最終檢查。也就是說緩衝只是讓顧客提早、更保守地看到「快沒了」，真正的總量上限還是 `total_quantity_cap` 那個數字，不會因為緩衝而變小。
+
 ## 讀取 API（Phase 3-2）
 
 三個 endpoint 都是 `GET`，不需要帶任何參數，回傳格式都是 `{"ok": true, ...}`；失敗時是 `{"ok": false, "error": "..."}`（HTTP 狀態碼會是 4xx/5xx）。
@@ -203,6 +224,14 @@ npm run deploy
 回傳目前**還在預購中**的檔期，每個檔期底下帶著自己的取貨時段（`PickupSlots`）。
 
 「還在預購中」＝ `status` 是 `active`，**而且**今天落在 `start_date`（預購起日）～`end_date`（預購結束日）之間（台北時區；`start_date` 當天就算開放，`end_date` 當天仍然算開放，隔天才會自動消失）。兩個日期只要空白就不看那一邊。老闆只要把起訖日設好，檔期會自動開放/關閉，不需要手動切換狀態；`status` 目前只剩 `active`/`ended` 兩種，`ended` 是老闆用「結束檔期」手動強制關閉，不管日期都不會再開放。這個判斷邏輯（`isCampaignOngoing()`）同時用在 `GET /products`、`POST /orders` 跟 `GET /settings` 的 `preorder_open_effective`。
+
+`remaining_quantity`／`low_stock`（低庫存緩衝，Phase 5 後續優化新增）：解決顧客測試時發現的問題——原本檔期總量上限只在最後 `POST /orders` 送出時才擋單，顧客選了半天商品、填完資料才發現已經額滿。現在 `GET /campaigns` 會即時算出「顯示用剩餘量」，前端數量選擇器直接用這個數字當上限，選超過就選不下去，不用等到送出才知道。
+
+- `remaining_quantity`：檔期還剩多少可以訂，`total_quantity_cap` 沒設（0 或空白）時是 `null`（不限制）
+- 剩餘量低於 `Campaigns.low_stock_threshold`（低庫存門檻）時，`remaining_quantity` 會刻意比實際剩餘量再少顯示 `Campaigns.low_stock_buffer` 份，當作同時有多人在選購時的緩衝，降低大家都以為自己搶到最後名額、結果同時送出真的超賣的機率；`low_stock_threshold`／`low_stock_buffer` 任一沒填就不套用緩衝，`remaining_quantity` 就是實際剩餘量
+- `low_stock`：布林值，剩餘量是否已經低於門檻，前端用這個決定要不要跳低庫存提醒
+- ⚠️ 這個緩衝只影響**顯示**與前端數量選擇器能選的上限，`POST /orders` 最終把關一律用未經緩衝的真實剩餘量，緩衝不會讓真正的總量上限被突破
+- `low_stock_threshold`／`low_stock_buffer` 是**檔期層級**的設定，跟 `total_quantity_cap` 一樣是整檔期共用一個緩衝，不分商品/口味各自計算；老闆可以直接在後台 PWA「預購檔期設定」頁面設定，不用進 Google Sheets
 
 ```json
 {
@@ -215,6 +244,8 @@ npm run deploy
       "start_date": "2026-08-10",
       "end_date": "2026-08-20",
       "total_quantity_cap": 200,
+      "remaining_quantity": 5,
+      "low_stock": true,
       "pickup_slots": [
         { "slot_id": "S001", "date": "2026-08-22", "time_range": "14:00-16:00" }
       ]
@@ -550,6 +581,8 @@ npm run deploy
   "start_date": "2026-08-17",
   "end_date": "2026-08-21",
   "total_quantity_cap": 120,
+  "low_stock_threshold": 10,
+  "low_stock_buffer": 5,
   "status": "active",
   "pickup_slots": [
     { "date": "2026-08-23", "time_range": "14:00-18:00" }
@@ -558,7 +591,7 @@ npm run deploy
 }
 ```
 
-- `name` 為必填，其他欄位可省略（`status` 預設 `active`，必須是 `active`/`ended` 其中之一，`pickup_slots` 預設空陣列）；檔期建立後能不能被顧客看到，完全由 `start_date`/`end_date` 自動判斷，不需要另外的「即將開始」狀態
+- `name` 為必填，其他欄位可省略（`status` 預設 `active`，必須是 `active`/`ended` 其中之一，`pickup_slots` 預設空陣列，`low_stock_threshold`/`low_stock_buffer` 預設 0＝不啟用低庫存緩衝）；檔期建立後能不能被顧客看到，完全由 `start_date`/`end_date` 自動判斷，不需要另外的「即將開始」狀態
 - 檔期編號自動產生，格式 `C001`、`C002`...；取貨時段編號 `S001`、`S002`...（不分檔期共用同一組編號，跟商品編號的做法一樣）
 - `copy_products_from_campaign_id`（選填，老闆後台 PWA「沿用上一檔商品清單」功能用）：帶了的話，會把該檔期底下的所有商品**整批複製**成新檔期底下的新商品（新的 `product_id`，其他欄位——名稱/分類/價格/單筆上限/上下架/大小規格——照抄）。這支店家品項固定，開新檔期不用每次重新輸入 40 個商品，之後在「商品管理」個別調整即可
 - 成功回傳 HTTP 201，內容含 `pickup_slots`（帶著自動產生的 `slot_id`）和 `copied_product_count`（這次複製了幾筆商品，沒有帶 `copy_products_from_campaign_id` 就是 `0`）
