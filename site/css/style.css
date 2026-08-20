@@ -777,6 +777,7 @@ body.keyboard-open .step-title::before {
   font-size: 16px;
   font-weight: 600;
   margin-bottom: 10px;
+  text-decoration: none;
 }
 
 .btn-primary {
