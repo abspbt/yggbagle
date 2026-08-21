@@ -1,0 +1,9 @@
+name = "yjg-order-pwa"
+compatibility_date = "2024-11-01"
+
+# 老闆後台 PWA 是純靜態網頁（沒有伺服器端程式碼，不用寫 Worker 邏輯），
+# 所以這裡不用設定 main，只要指定 [assets] 的 directory 就好。
+# 這支設定檔只給 Cloudflare Dashboard「連結到 Git」的部署流程用，
+# 跟 worker/wrangler.toml（真正的 API Worker，用網頁編輯器貼 dashboard-single-file.js 部署）完全獨立、互不影響。
+[assets]
+directory = "."
