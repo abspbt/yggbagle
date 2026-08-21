@@ -62,10 +62,32 @@
   可以購買數量，以訂單明細為主」的免責提示，真正的把關仍在 `POST /orders`。**PR #62
   原本的做法是剩餘量偏低時刻意打折顯示（緩衝）+ 跳一次性彈窗，後來考量消費者保護法規
   疑慮，PR #63 改成如實顯示真實剩餘量、拿掉彈窗，只保留購物車列下方的常駐免責提示**
-- ⏭️ 下一步：Phase 7（部署 + 網域設定）——顧客網站 `site/` 目前完全還沒部署到任何正式網址
-  （只在本機瀏覽器測試過完整流程）；老闆後台 PWA 目前暫時掛在 GitHub Pages
-  （`https://abspbt.github.io/yjg-order/`），要不要正式搬到 Cloudflare Pages 還沒決定；
-  網域也還沒購買/串接。詳細規劃、待辦清單見 `HANDOFF_PHASE7_DEPLOY.md`
+- ✅ Phase 7：部署 + 網域設定（已完成）——業主買好 Cloudflare 網域 `yjg-bakery.com`，三個網站
+  分別建立獨立的 Cloudflare Pages/Workers 專案（Git 連結 `main` 分支自動部署，靜態資源用
+  `wrangler.toml` 的 `[assets]` 設定），掛上正式子網域：
+  - `yjg-bakery.com`（含 `www.` 自動轉址）→ 首頁，`abspbt/yjg-bakery` repo 根目錄
+  - `order.yjg-bakery.com` → 顧客訂購網站，`abspbt/yjg-order` repo 的 `site/` 資料夾
+  - `bakerhsu.yjg-bakery.com` → 老闆後台 PWA，`abspbt/yjg-order` repo 根目錄（原本暫時掛在
+    GitHub Pages 的 `https://abspbt.github.io/yjg-order/` 已停用，改用這個正式網址）
+  三個網址都已用手機（行動網路）實測：完整下單流程正常、訂單有寫進 Google Sheets、
+  老闆後台 PIN 登入與訂單列表正常、PWA 重新加到主畫面正常。
+  - Cloudflare 目前已經把 Pages 併入 Workers，「連結到 Git」的部署介面改用 `wrangler.toml`
+    的 `[assets]` 設定描述靜態資源目錄，不是舊版 Pages 的「建置輸出目錄」欄位；
+    `yjg-order` repo 新增了 `wrangler.toml`（根目錄，PWA 用）跟 `site/wrangler.toml`
+    （顧客網站用），跟 `worker/wrangler.toml`（真正的 API Worker，用網頁編輯器貼
+    `dashboard-single-file.js` 部署）完全獨立、互不影響；`yjg-bakery` repo 也比照新增了
+    根目錄 `wrangler.toml`
+  - `yjg-bakery` repo 各頁面的 `canonical`、`sitemap.xml`、`robots.txt` 已經把絕對網址從
+    暫用的 GitHub Pages 網址換成正式網域 `https://yjg-bakery.com/`；之後需要另外去 Google
+    Search Console 用新網域重新驗證、重新提交 sitemap（不急，網站穩定後再處理即可）
+  - `www.yjg-bakery.com` 用 Cloudflare 的「重新導向規則」範本（從 WWW 重新導向轉接到根）
+    設定 301 轉址到 `yjg-bakery.com`，因為 www 子網域原本沒有 DNS 記錄，套用範本時額外
+    建立了一筆 A 記錄指到保留位址 `192.0.2.1`（僅用來讓流量經過 Cloudflare Proxy 觸發
+    轉址規則，實際上不會真的連到這個 IP）
+  - 三個 Worker 的 `*.workers.dev` 測試網址目前都顯示「已停用」，這是 Cloudflare 現在的
+    預設行為（避免測試用網址被公開索引/存取），不影響正式的自訂網域，不用特別處理
+  - `bagel-order`/`cake-order` 頁目前只有 LINE 好友連結，還沒有連到 `order.yjg-bakery.com`
+    這個正式訂購網址，要不要加上、怎麼加，之後可以另外討論
 
 **Phase 3-1 備註**：
 - 已建立 Google Cloud Service Account，金鑰以「秘密」類型設定在 Cloudflare Dashboard 的 Worker 環境變數（`SPREADSHEET_ID`、`GOOGLE_SERVICE_ACCOUNT_KEY`），沒有寫進程式碼或 repo
@@ -641,12 +663,14 @@ Worker 程式碼位置：[GitHub repo 連結]
 **目標**：把顧客網站與 PWA 都部署到 Cloudflare Pages，掛上你 Cloudflare 已有的網域。
 
 **產出**：
-- [ ] 顧客網站部署上線（例如 order.yourdomain.com）
-- [ ] PWA 部署上線（例如 admin.yourdomain.com）
-- [ ] Worker 綁定正確的路由
-- [ ] DNS 設定確認可正常連線
+- [x] 顧客網站部署上線（`order.yjg-bakery.com`）
+- [x] PWA 部署上線（`bakerhsu.yjg-bakery.com`）
+- [x] 首頁部署上線（`yjg-bakery.com`，含 `www.` 自動轉址），`abspbt/yjg-bakery` repo
+- [x] Worker（API）CORS 本來就是開放所有來源，不用改，三個新網域都測試過能正常呼叫
+- [x] DNS 設定確認可正常連線（已用手機行動網路實測三個網址）
 
-**驗收標準**：兩個網址都能從外部（非本機）正常打開並運作。
+**驗收標準**：三個網址都能從外部（非本機）正常打開並運作。已完成，詳見上方「目前進度」
+Phase 7 條目。
 
 **▶ 交接摘要範本**：
 ```
